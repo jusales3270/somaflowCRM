@@ -43,7 +43,7 @@
  * `/admin/marca` mostra ao operador.
  */
 
-import { DEFAULT_APP_NAME } from "@/lib/branding";
+import { DEFAULT_APP_NAME, DEFAULT_LOGO_URL } from "@/lib/branding";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -116,7 +116,7 @@ export const NEUTROS_DE_SAIDA = {
 function padraoDoProduto(): MarcaDeSaida {
   return {
     nome: DEFAULT_APP_NAME,
-    logoUrl: null,
+    logoUrl: DEFAULT_LOGO_URL,
     accent: ACCENT_DO_PRODUTO,
     accentFg: melhorFrenteSobre(ACCENT_DO_PRODUTO),
     origens: { nome: "padrao", cor: "padrao" },

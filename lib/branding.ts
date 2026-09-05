@@ -16,7 +16,8 @@
  * runtime em vez de lida do bundle.
  */
 
-export const DEFAULT_APP_NAME = "DeskcommCRM";
+export const DEFAULT_APP_NAME = "SomaFlow CRM";
+export const DEFAULT_LOGO_URL = "/logo.png";
 
 export type Branding = {
   /** Nome exibido na interface e nos títulos de página. */

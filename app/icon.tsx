@@ -1,10 +1,12 @@
+import fs from "node:fs";
+import path from "node:path";
 import { ImageResponse } from "next/og";
 
 import { letraDoIcone } from "@/lib/branding/icone";
 import { marcaDaSaida } from "@/lib/branding/saida";
 
 /**
- * O ícone da aba, DESENHADO em runtime com a marca da instalação.
+ * O ícone da aba, servindo o asset de marca quando presente ou desenhado em runtime.
  *
  * ─── O que existia antes: nada ──────────────────────────────────────────────
  *
@@ -65,6 +67,18 @@ export const contentType = "image/png";
 
 export default async function Icon() {
   const marca = await marcaDaSaida(null);
+
+  const iconFilePath = path.join(process.cwd(), "public/icon.png");
+  if (fs.existsSync(iconFilePath)) {
+    const fileBuffer = fs.readFileSync(iconFilePath);
+    return new Response(fileBuffer, {
+      headers: {
+        "content-type": "image/png",
+        "cache-control": "public, max-age=60, stale-while-revalidate=600",
+      },
+    });
+  }
+
   const letra = letraDoIcone(marca.nome);
 
   return new ImageResponse(
