@@ -13,9 +13,10 @@ export async function signOut(): Promise<void> {
   const hdrs = await headers();
   await supabase.auth.signOut();
 
-  // Clear active_org cookie too.
+  // Clear active_org and dev session cookies too.
   const store = await cookies();
   store.delete("active_org");
+  store.delete("somaflow_dev_session");
 
   if (user) {
     await audit({

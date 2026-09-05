@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/auth/LoginForm";
@@ -16,7 +17,11 @@ export default async function LoginPage({
 }) {
   const { next, reset, error } = await searchParams;
 
-  if (process.env.NODE_ENV === "development") {
+  const cookieStore = await cookies();
+  if (
+    process.env.NODE_ENV === "development" &&
+    cookieStore.get("somaflow_dev_session")?.value === "authenticated"
+  ) {
     redirect(next || "/app");
   }
   // Fora da árvore de `app/app/layout.tsx` — sem `IdiomaProvider` do lado do

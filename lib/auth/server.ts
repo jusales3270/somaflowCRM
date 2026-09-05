@@ -166,7 +166,10 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
 
   if (!user) {
     if (process.env.NODE_ENV === "development") {
-      return DEV_MOCK_USER;
+      const store = await cookies();
+      if (store.get("somaflow_dev_session")?.value === "authenticated") {
+        return DEV_MOCK_USER;
+      }
     }
     return null;
   }

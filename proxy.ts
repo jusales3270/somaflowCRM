@@ -63,10 +63,11 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
-    if (process.env.NODE_ENV === "development") {
-      return response;
-    }
+  const devSession = request.cookies.get("somaflow_dev_session");
+  const isDevAuthed =
+    process.env.NODE_ENV === "development" && devSession?.value === "authenticated";
+
+  if (!user && !isDevAuthed) {
     // API routes must respond with JSON envelope (contract: {error:{code,message}})
     // — never redirect HTML to JSON consumers. UI routes redirect to /login as before.
     if (pathname.startsWith("/api/")) {
