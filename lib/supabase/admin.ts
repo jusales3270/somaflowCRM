@@ -18,6 +18,7 @@
 
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
+import { isDevSupabaseFallbackActive, devSupabaseFetch } from "@/lib/supabase/dev-adapter";
 
 let _admin: SupabaseClient | null = null;
 
@@ -34,6 +35,7 @@ export function createAdminClient(): SupabaseClient {
       headers: {
         "X-Client-Info": "deskcomm-crm/admin",
       },
+      fetch: isDevSupabaseFallbackActive() ? devSupabaseFetch : undefined,
     },
   });
 

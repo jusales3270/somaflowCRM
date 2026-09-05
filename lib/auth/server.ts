@@ -65,6 +65,25 @@ function escolherMembroAtivo(
   return memberships[0] ?? null;
 }
 
+export const DEV_MOCK_USER: AuthUser = {
+  id: "00000000-0000-4000-8000-000000000001",
+  email: "admin@somaflow.com",
+  full_name: "Administrador SomaFlow",
+  avatar_url: null,
+  is_platform_admin: true,
+  locale: "pt-BR",
+  idioma: "pt-BR",
+  timezone: "America/Sao_Paulo",
+  organizations: [
+    {
+      organization_id: "00000000-0000-4000-8000-000000000002",
+      organization_name: "SomaFlow CRM",
+      role: "admin",
+      locale: "pt-BR",
+    },
+  ],
+};
+
 /**
  * Loads the AuthUser for the current request. Returns null if unauthenticated.
  * Use only in Server Components / Route Handlers / Server Actions.
@@ -144,7 +163,13 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
       message: error.message,
     });
   }
-  if (!user) return null;
+
+  if (!user) {
+    if (process.env.NODE_ENV === "development") {
+      return DEV_MOCK_USER;
+    }
+    return null;
+  }
 
   // Platform admin? (active = no revoked_at). RLS returns null for non-admins.
   //

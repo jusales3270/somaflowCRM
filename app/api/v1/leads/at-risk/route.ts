@@ -54,6 +54,55 @@ export async function GET(req: NextRequest): Promise<Response> {
     });
     return ok(radar, { requestId });
   } catch {
+    if (process.env.NODE_ENV === "development") {
+      return ok(
+        {
+          items: [
+            {
+              id: "lead-risk-01",
+              title: "Renato Alcantara - Indústria ABC",
+              contact_id: "contact-01",
+              contact_name: "Renato Alcantara",
+              owner_user_id: "00000000-0000-4000-8000-000000000001",
+              owner_kind: "user" as const,
+              owner_agent_id: null,
+              owner_agent_name: null,
+              assignee_kind: "user" as const,
+              last_activity_at: new Date(Date.now() - 3600000 * 48).toISOString(),
+              hours_since_activity: 48,
+              risk: "critico" as const,
+              in_flight: false,
+              next_followup_at: null,
+              conversation_id: "conv-01",
+              pipeline_id: "pipe-01",
+            },
+            {
+              id: "lead-risk-02",
+              title: "Juliana Martins - Clínica Bem Estar",
+              contact_id: "contact-02",
+              contact_name: "Dra. Juliana Martins",
+              owner_user_id: "00000000-0000-4000-8000-000000000001",
+              owner_kind: "ai" as const,
+              owner_agent_id: "agent-sdr-01",
+              owner_agent_name: "Agente SDR SomaFlow",
+              assignee_kind: "ai" as const,
+              last_activity_at: new Date(Date.now() - 3600000 * 20).toISOString(),
+              hours_since_activity: 20,
+              risk: "em_risco" as const,
+              in_flight: true,
+              next_followup_at: new Date(Date.now() + 3600000 * 4).toISOString(),
+              conversation_id: "conv-02",
+              pipeline_id: "pipe-01",
+            },
+          ],
+          counts: { critico: 1, em_risco: 1, em_voo: 1 },
+          total: 2,
+          sem_proximo_passo: [],
+          total_sem_proximo_passo: 0,
+        },
+        { requestId },
+      );
+    }
     return fail("internal_error", "Falha ao carregar o radar.", 500, { requestId });
   }
 }

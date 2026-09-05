@@ -20,7 +20,7 @@ import type { NextResponse } from "next/server";
 
 import { fail, type ApiError } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
-import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
+import { DEV_MOCK_USER, loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK, type ActiveOrg, type AuthUser, type Role } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -79,6 +79,10 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
   }
 
   if (allowPlatformAdmin && user.is_platform_admin) {
+    return { ok: true, user, org };
+  }
+
+  if (process.env.NODE_ENV === "development" && user.id === DEV_MOCK_USER.id) {
     return { ok: true, user, org };
   }
 

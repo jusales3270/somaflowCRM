@@ -9,6 +9,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
+import { isDevSupabaseFallbackActive, devSupabaseFetch } from "@/lib/supabase/dev-adapter";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -28,6 +29,9 @@ export async function createClient() {
           // Refresh de sessão acontece no middleware do Next.
         }
       },
+    },
+    global: {
+      fetch: isDevSupabaseFallbackActive() ? devSupabaseFetch : undefined,
     },
     // D-01.01: cookie name canônico alinhado ao middleware.
     cookieOptions: {
