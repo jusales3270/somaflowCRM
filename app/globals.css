@@ -47,7 +47,7 @@
   --color-border-strong: #d2cdbf;
 
   /* Accent — Sage (11 stops) */
-  --color-accent-50:  #f3f6f1;
+  --color-accent-50: #f3f6f1;
   --color-accent-100: #e4ebe0;
   --color-accent-200: #c8d6c1;
   --color-accent-300: #a4ba9a;
@@ -64,7 +64,7 @@
   --color-accent-hover: var(--color-accent-700);
 
   /* Neutrals — greige (11 stops, light) */
-  --color-neutral-50:  #faf9f6;
+  --color-neutral-50: #faf9f6;
   --color-neutral-100: #f3f1ec;
   --color-neutral-200: #e7e3da;
   --color-neutral-300: #d2cdbf;
@@ -206,14 +206,22 @@
    * não duplicado aqui — assim a relação entre a faixa e o fundo é uma só,
    * e não dois hex que envelhecem separados.
    */
-  --agenda-pessoa-1: #ac4d40;   /* telha */
-  --agenda-pessoa-2: #bd7c20;   /* âmbar */
-  --agenda-pessoa-3: #7e6f01;   /* oliva */
-  --agenda-pessoa-4: #11a19b;   /* turquesa */
-  --agenda-pessoa-5: #0b7a9a;   /* azul */
-  --agenda-pessoa-6: #608bda;   /* índigo */
-  --agenda-pessoa-7: #7b5bad;   /* violeta */
-  --agenda-pessoa-8: #cc77b1;   /* framboesa */
+  --agenda-pessoa-1: #ac4d40;
+  /* telha */
+  --agenda-pessoa-2: #bd7c20;
+  /* âmbar */
+  --agenda-pessoa-3: #7e6f01;
+  /* oliva */
+  --agenda-pessoa-4: #11a19b;
+  /* turquesa */
+  --agenda-pessoa-5: #0b7a9a;
+  /* azul */
+  --agenda-pessoa-6: #608bda;
+  /* índigo */
+  --agenda-pessoa-7: #7b5bad;
+  /* violeta */
+  --agenda-pessoa-8: #cc77b1;
+  /* framboesa */
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -316,14 +324,22 @@
    * dentro de página escura herdaria os valores escuros, e a amostra de cor
    * mentiria sobre a cor que a pessoa tem.
    */
-  --agenda-pessoa-1: #ac4d40;   /* telha */
-  --agenda-pessoa-2: #bd7c20;   /* âmbar */
-  --agenda-pessoa-3: #7e6f01;   /* oliva */
-  --agenda-pessoa-4: #11a19b;   /* turquesa */
-  --agenda-pessoa-5: #0b7a9a;   /* azul */
-  --agenda-pessoa-6: #608bda;   /* índigo */
-  --agenda-pessoa-7: #7b5bad;   /* violeta */
-  --agenda-pessoa-8: #cc77b1;   /* framboesa */
+  --agenda-pessoa-1: #ac4d40;
+  /* telha */
+  --agenda-pessoa-2: #bd7c20;
+  /* âmbar */
+  --agenda-pessoa-3: #7e6f01;
+  /* oliva */
+  --agenda-pessoa-4: #11a19b;
+  /* turquesa */
+  --agenda-pessoa-5: #0b7a9a;
+  /* azul */
+  --agenda-pessoa-6: #608bda;
+  /* índigo */
+  --agenda-pessoa-7: #7b5bad;
+  /* violeta */
+  --agenda-pessoa-8: #cc77b1;
+  /* framboesa */
 }
 
 [data-theme="dark"] {
@@ -343,7 +359,7 @@
   --color-border-strong: #444239;
 
   /* Accent stays same hex stops; default shifts up for dark contrast */
-  --color-accent-50:  #f3f6f1;
+  --color-accent-50: #f3f6f1;
   --color-accent-100: #e4ebe0;
   --color-accent-200: #c8d6c1;
   --color-accent-300: #a4ba9a;
@@ -360,7 +376,7 @@
   --color-accent-hover: var(--color-accent-300);
 
   /* Neutrals — greige (11 stops, dark) */
-  --color-neutral-50:  #f5f4ef;
+  --color-neutral-50: #f5f4ef;
   --color-neutral-100: #e6e4dc;
   --color-neutral-200: #bbb8ac;
   --color-neutral-300: #8e8b7f;
@@ -586,15 +602,18 @@
 @utility duration-fast {
   transition-duration: var(--duration-fast);
 }
+
 @utility duration-base {
   transition-duration: var(--duration-base);
 }
+
 @utility duration-slow {
   transition-duration: var(--duration-slow);
 }
 
 
 @layer base {
+
   /* O preflight do v4 não pinta mais borda por padrão (`border: 0 solid`, cor
      = `currentColor`), então os ~300 `class="border"` sem cor desta base
      dependem inteiramente desta regra. Ela já existia no v3 pelo mesmo motivo;
@@ -659,9 +678,11 @@
        continua rolando, contido nele mesmo; só a página como um todo não. */
     overflow-x: hidden;
   }
+
   [data-theme="dark"] {
     color-scheme: dark;
   }
+
   /* Par do espelho de tokens acima: sem isto, uma subárvore clara dentro de uma
      página escura recebe os tokens claros mas mantém o `color-scheme: dark` do
      `<html>` — e o navegador continua pintando scrollbar, `<input>` e menu
@@ -686,7 +707,10 @@
     text-rendering: optimizeLegibility;
   }
 
-  code, kbd, pre, samp {
+  code,
+  kbd,
+  pre,
+  samp {
     font-family: var(--font-mono), ui-monospace, "SFMono-Regular", Menlo,
       Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-variant-numeric: tabular-nums;
@@ -696,6 +720,7 @@
     background-color: var(--color-accent-200);
     color: var(--color-accent-950);
   }
+
   [data-theme="dark"] ::selection {
     background-color: var(--color-accent-700);
     color: var(--color-accent-50);
@@ -707,6 +732,7 @@
     outline-offset: 2px;
     border-radius: var(--radius-sm);
   }
+
   [data-theme="dark"] :focus-visible {
     outline-color: var(--color-accent-400);
   }
@@ -741,32 +767,39 @@
     scrollbar-width: thin;
     scrollbar-color: var(--color-neutral-300) transparent;
   }
+
   [data-theme="dark"] * {
     scrollbar-color: var(--color-neutral-600) transparent;
   }
+
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
+
   ::-webkit-scrollbar-track {
     background: transparent;
   }
+
   ::-webkit-scrollbar-thumb {
     background-color: var(--color-neutral-300);
     border-radius: var(--radius-full);
     border: 2px solid transparent;
     background-clip: padding-box;
   }
+
   ::-webkit-scrollbar-thumb:hover {
     background-color: var(--color-neutral-400);
     background-clip: padding-box;
     border: 2px solid transparent;
   }
+
   [data-theme="dark"] ::-webkit-scrollbar-thumb {
     background-color: var(--color-neutral-600);
     background-clip: padding-box;
     border: 2px solid transparent;
   }
+
   [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
     background-color: var(--color-neutral-500);
     background-clip: padding-box;
@@ -792,6 +825,7 @@
   from {
     border-color: var(--color-accent);
   }
+
   to {
     border-color: transparent;
   }
@@ -896,6 +930,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   /* O destino é o MESMO — só chega sem o percurso. Esconder a coluna, ou
      entregá-la por um caminho diferente, faria de "movimento reduzido" uma
      versão pior do produto em vez de uma versão calma dele. */

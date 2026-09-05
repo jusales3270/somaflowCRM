@@ -29,6 +29,8 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  * o "Entrar", que lê o `.env`). Trocar o texto para este mesmo resolvedor
  * deixaria a spec verde medindo nada.
  */
+import { GradientWave } from "@/components/ui/gradient-wave";
+
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const marca = await marcaDaSaida(null);
   // A maioria destas telas roda ANTES do login (não há usuário nenhum), mas
@@ -44,10 +46,14 @@ export default async function PublicLayout({ children }: { children: React.React
 
   return (
     <IdiomaProvider locale={locale}>
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
-        <div className="w-full max-w-sm space-y-6">
+      <div className="relative flex min-h-screen items-center justify-center bg-background p-6 overflow-hidden">
+        <GradientWave
+          colors={["#00a2f5", "#ffffff", "#008fd8", "#ffffff", "#38bdf8", "#ffffff"]}
+          className="opacity-75 dark:opacity-35"
+        />
+        <div className="relative z-10 w-full max-w-sm rounded-3xl bg-surface/85 backdrop-blur-xl p-8 shadow-2xl border border-white/60 dark:border-white/10">
           {marca.logoUrl && (
-            <div className="flex justify-center">
+            <div className="flex justify-center mb-2">
               {/*
                 <img> em vez de next/image pelo mesmo motivo da barra lateral: a URL
                 é de quem hospeda e o `next/image` exige allowlist de domínios
@@ -69,7 +75,7 @@ export default async function PublicLayout({ children }: { children: React.React
                 data-testid="logo-da-fachada"
                 src={marca.logoUrl}
                 alt={marca.nome}
-                className="h-10 w-auto max-w-[12rem] object-contain"
+                className="h-[67px] w-auto max-w-[20rem] object-contain"
               />
             </div>
           )}

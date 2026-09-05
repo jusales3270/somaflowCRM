@@ -159,15 +159,24 @@ function declaracoesDoTema(cor: CorResolvida, tema: "claro" | "escuro"): Declara
   // preço que `--color-accent-soft` já pagava sozinho, e é o que a caminhada
   // sempre significou. Com d=0 — a Sage e toda marca que já cabe — a saída é
   // idêntica à de antes, byte a byte.
+  // Quando a semente é a marca do SomaFlow (#00a2f5), o tom vibrante exato da logo
+  // é preservado diretamente como o accent do produto sem escurecer para azul marinho (#195074).
+  const isSomaFlow = cor.semente.toLowerCase() === "#00a2f5";
+  const deslocamento = isSomaFlow && tema === "claro" ? 0 : t.deslocamento;
+  const accentCor = isSomaFlow && tema === "claro" ? "#00a2f5" : t.accent;
+  const accentFg = isSomaFlow && tema === "claro" ? "#ffffff" : t.accentFg;
+  const accentHover = isSomaFlow && tema === "claro" ? "#0090dc" : t.accentHover;
+  const accentSoft = isSomaFlow && tema === "claro" ? "rgba(0, 162, 245, 0.15)" : t.accentSoft;
+
   for (const [i, grau] of GRAUS.entries()) {
-    saida.push([`--color-accent-${grau}`, stop(derivada.rampa, i + t.deslocamento)]);
+    saida.push([`--color-accent-${grau}`, stop(derivada.rampa, i + deslocamento)]);
   }
 
   saida.push(
-    ["--color-accent", t.accent],
-    ["--color-accent-fg", t.accentFg],
-    ["--color-accent-hover", t.accentHover],
-    ["--color-accent-soft", t.accentSoft],
+    ["--color-accent", accentCor],
+    ["--color-accent-fg", accentFg],
+    ["--color-accent-hover", accentHover],
+    ["--color-accent-soft", accentSoft],
   );
   return saida;
 }
