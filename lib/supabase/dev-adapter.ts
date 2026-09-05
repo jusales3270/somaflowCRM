@@ -37,6 +37,10 @@ const DEMO_DATA: Record<string, any[]> = {
       organization_id: ORG_ID,
       role: "admin",
       accepted_at: "2026-09-01T00:00:00.000Z",
+      organizations: {
+        display_name: "SomaFlow CRM",
+        locale: "pt-BR",
+      },
     },
   ],
   platform_admins: [
@@ -111,6 +115,9 @@ const DEMO_DATA: Record<string, any[]> = {
       position: 0,
       is_default: true,
       is_archived: false,
+      settings: {
+        canonical_tags: ["Importante"],
+      },
     },
   ],
   crm_stages: [
@@ -158,6 +165,12 @@ const DEMO_DATA: Record<string, any[]> = {
       stage_id: "stage-02",
       status: "open",
       value_cents: 150000,
+      currency: "BRL",
+      position_in_stage: 0,
+      tags: ["Importante"],
+      owner_kind: "user",
+      owner_user_id: USER_ID,
+      owner_agent_id: null,
       contact_id: "contact-01",
       contacts: {
         name: "Renato Alcantara",
@@ -175,6 +188,12 @@ const DEMO_DATA: Record<string, any[]> = {
       stage_id: "stage-03",
       status: "open",
       value_cents: 320000,
+      currency: "BRL",
+      position_in_stage: 0,
+      tags: ["Importante"],
+      owner_kind: "user",
+      owner_user_id: USER_ID,
+      owner_agent_id: null,
       contact_id: "contact-02",
       contacts: {
         name: "Juliana Martins",
@@ -192,6 +211,12 @@ const DEMO_DATA: Record<string, any[]> = {
       stage_id: "stage-04",
       status: "open",
       value_cents: 580000,
+      currency: "BRL",
+      position_in_stage: 0,
+      tags: [],
+      owner_kind: "user",
+      owner_user_id: USER_ID,
+      owner_agent_id: null,
       contact_id: "contact-03",
       contacts: {
         name: "Marcos Andrade",

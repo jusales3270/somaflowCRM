@@ -8,6 +8,7 @@
  */
 
 import { createBrowserClient } from "@supabase/ssr";
+import { isDevSupabaseFallbackActive, devSupabaseFetch } from "@/lib/supabase/dev-adapter";
 
 let _client: ReturnType<typeof createBrowserClient> | null = null;
 
@@ -123,6 +124,9 @@ export function createClient() {
       name: "sb-deskcomm-auth",
       sameSite: "strict",
       path: "/",
+    },
+    global: {
+      fetch: isDevSupabaseFallbackActive() ? devSupabaseFetch : undefined,
     },
     realtime: { accessToken: tokenDoRealtime },
   });

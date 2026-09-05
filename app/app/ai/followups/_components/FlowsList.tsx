@@ -66,8 +66,8 @@ export function FlowsList({ initialData, canWrite }: Props) {
       )}
 
       <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {flows.map((flow) => (
-          <li key={flow.id}>
+        {flows.map((flow, idx) => (
+          <li key={flow.id || `flow-${idx}`}>
             <Card className="flex h-full flex-col gap-3 p-4 transition-colors hover:border-accent-400">
               <Link href={`/app/ai/followups/${flow.id}`} className="flex flex-1 flex-col gap-3">
                 <div className="flex items-start justify-between gap-2">

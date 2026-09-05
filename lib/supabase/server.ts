@@ -14,7 +14,7 @@ import { isDevSupabaseFallbackActive, devSupabaseFetch } from "@/lib/supabase/de
 export async function createClient() {
   const cookieStore = await cookies();
 
-  return createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+  const client = createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -42,4 +42,45 @@ export async function createClient() {
       path: "/",
     },
   });
+
+  if (
+    isDevSupabaseFallbackActive() &&
+    cookieStore.get("somaflow_dev_session")?.value === "authenticated"
+  ) {
+    const devUser = {
+      id: "00000000-0000-4000-8000-000000000001",
+      app_metadata: {},
+      user_metadata: { full_name: "Administrador SomaFlow", locale: "pt-BR" },
+      aud: "authenticated",
+      role: "authenticated",
+      email: "admin@somaflow.com",
+      created_at: "2026-09-01T00:00:00.000Z",
+    };
+    const originalGetUser = client.auth.getUser.bind(client.auth);
+    client.auth.getUser = async (jwt?: string) => {
+      const res = await originalGetUser(jwt);
+      if (res.data?.user) return res;
+      return {
+        data: { user: devUser as any },
+        error: null,
+      };
+    };
+    client.auth.getSession = async () => {
+      return {
+        data: {
+          session: {
+            access_token: "mock-dev-token",
+            token_type: "bearer",
+            expires_in: 3600,
+            expires_at: Math.floor(Date.now() / 1000) + 3600,
+            refresh_token: "mock-refresh-token",
+            user: devUser as any,
+          },
+        },
+        error: null,
+      };
+    };
+  }
+
+  return client;
 }

@@ -55,6 +55,12 @@ export async function signInWithPassword(
         httpOnly: true,
         maxAge: 60 * 60 * 24 * 7,
       });
+      cookieStore.set("active_org", "00000000-0000-4000-8000-000000000002", {
+        path: "/",
+        sameSite: "strict",
+        httpOnly: true,
+        maxAge: 60 * 60 * 24 * 7,
+      });
       redirect(safeNext(next, "/app/inbox"));
     }
     return { ok: false, error: "invalid_credentials" };

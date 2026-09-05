@@ -110,17 +110,17 @@ export function SidebarContent({
     <>
       <div className={cn("flex items-center border-b px-4 h-14", collapsed ? "justify-center" : "justify-start")}>
         {logo && !collapsed ? (
-          // <img> em vez de next/image de propósito: a URL vem de quem hospeda
-          // (banco ou .env), e next/image exige allowlist de domínios fechada em
-          // build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
-          // Altura fixa e largura livre porque a arte enviada tem proporção
-          // desconhecida; forçar as duas distorceria o logo de quem configurou.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={logo}
-            alt={nome}
-            className="h-7 w-auto max-w-[10rem] object-contain"
-          />
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={logo}
+              alt={nome}
+              className="h-[36px] w-auto max-w-[9.5rem] object-contain"
+            />
+            <span className="text-[21px] font-normal tracking-normal leading-none text-zinc-700 dark:text-zinc-200 select-none translate-y-[4px]">
+              CRM
+            </span>
+          </div>
         ) : (
           <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>
             {nome}

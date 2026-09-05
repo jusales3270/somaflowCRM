@@ -121,6 +121,13 @@ export function ehSessaoAusente(error: { name?: string } | null | undefined): bo
 }
 
 export async function loadAuthUser(): Promise<AuthUser | null> {
+  if (process.env.NODE_ENV === "development") {
+    const store = await cookies();
+    if (store.get("somaflow_dev_session")?.value === "authenticated") {
+      return DEV_MOCK_USER;
+    }
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
