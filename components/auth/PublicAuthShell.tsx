@@ -44,13 +44,13 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
           aria-label="Clique para entrar no CRM"
           className="group relative flex flex-col items-center cursor-pointer select-none rounded-3xl p-6 transition-transform duration-300 hover:scale-105 active:scale-95 focus:outline-hidden"
         >
-          {/* Brilho e reflexo luminoso da água sob a logo */}
+          {/* Brilho e reflexo sutil contido sob a logo, mantendo os prints nítidos */}
           <div
             aria-hidden
-            className="absolute inset-0 -z-10 rounded-full blur-3xl opacity-60 transition-opacity duration-500 group-hover:opacity-90"
+            className="absolute -inset-4 -z-10 rounded-full blur-xl opacity-75 transition-opacity duration-500 group-hover:opacity-95"
             style={{
               background:
-                "radial-gradient(circle at center, rgba(0, 162, 245, 0.45) 0%, rgba(56, 189, 248, 0.2) 50%, transparent 75%)",
+                "radial-gradient(circle at center, rgba(255, 255, 255, 0.85) 0%, rgba(0, 162, 245, 0.3) 45%, transparent 70%)",
             }}
           />
 

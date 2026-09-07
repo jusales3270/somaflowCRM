@@ -29,7 +29,7 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  * o "Entrar", que lê o `.env`). Trocar o texto para este mesmo resolvedor
  * deixaria a spec verde medindo nada.
  */
-import { GradientWave } from "@/components/ui/gradient-wave";
+import { ThreeDMarquee } from "@/components/ui/three-d-marquee";
 import { PublicAuthShell } from "@/components/auth/PublicAuthShell";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
@@ -48,10 +48,14 @@ export default async function PublicLayout({ children }: { children: React.React
   return (
     <IdiomaProvider locale={locale}>
       <div className="relative flex min-h-screen items-center justify-center bg-background p-6 overflow-hidden">
-        <GradientWave
-          colors={["#00a2f5", "#ffffff", "#008fd8", "#ffffff", "#38bdf8", "#ffffff"]}
-          className="opacity-75 dark:opacity-35"
-        />
+        <div className="absolute inset-0 pointer-events-none overflow-hidden -z-0">
+          <ThreeDMarquee className="w-full h-full" />
+          {/* Vinheta ultra sutil apenas para foco na logo central sem cobrir os prints */}
+          <div
+            className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.08)_100%)] dark:bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.4)_100%)]"
+            aria-hidden
+          />
+        </div>
         <PublicAuthShell marca={marca}>
           {children}
         </PublicAuthShell>
