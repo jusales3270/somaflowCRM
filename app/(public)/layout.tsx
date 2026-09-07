@@ -30,6 +30,7 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  * deixaria a spec verde medindo nada.
  */
 import { GradientWave } from "@/components/ui/gradient-wave";
+import { PublicAuthShell } from "@/components/auth/PublicAuthShell";
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const marca = await marcaDaSaida(null);
@@ -51,36 +52,9 @@ export default async function PublicLayout({ children }: { children: React.React
           colors={["#00a2f5", "#ffffff", "#008fd8", "#ffffff", "#38bdf8", "#ffffff"]}
           className="opacity-75 dark:opacity-35"
         />
-        <div className="relative z-10 w-full max-w-sm rounded-3xl bg-surface/85 backdrop-blur-xl p-8 shadow-2xl border border-white/60 dark:border-white/10">
-          {marca.logoUrl && (
-            <div className="flex justify-center mb-2">
-              {/*
-                <img> em vez de next/image pelo mesmo motivo da barra lateral: a URL
-                é de quem hospeda e o `next/image` exige allowlist de domínios
-                fechada em BUILD — a imagem pré-buildada do self-host recusaria o
-                domínio do operador. Altura fixa e largura livre para não distorcer
-                arte de proporção desconhecida.
-
-                O `alt` é o nome DESTA resolução (`marca.nome`), e não o de
-                `branding()`: é a legenda da imagem que está ali, e nomeá-la com a
-                marca de outra fonte descreveria uma marca que não é a do logo.
-
-                O `data-testid` é lido por `tests/e2e/marca-logo.spec.ts`, que prova
-                que o logo da EMPRESA não vaza para cá. Sem ele a spec caía na
-                "primeira <img> da página", e uma asserção de negação com seletor
-                largo passa sozinha assim que outra imagem entra na tela.
-              */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                data-testid="logo-da-fachada"
-                src={marca.logoUrl}
-                alt={marca.nome}
-                className="h-[67px] w-auto max-w-[20rem] object-contain"
-              />
-            </div>
-          )}
+        <PublicAuthShell marca={marca}>
           {children}
-        </div>
+        </PublicAuthShell>
       </div>
     </IdiomaProvider>
   );

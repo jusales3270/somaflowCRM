@@ -939,3 +939,34 @@
     transform: none;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Animação Pulsante da Logo — Tela de Entrada
+   ───────────────────────────────────────────────────────────────────────── */
+
+@keyframes somaflow-pulse {
+  0% {
+    transform: scale(1);
+    filter: drop-shadow(0 15px 25px rgba(0, 162, 245, 0.25));
+  }
+  50% {
+    transform: scale(1.07);
+    filter: drop-shadow(0 25px 38px rgba(0, 162, 245, 0.45));
+  }
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 15px 25px rgba(0, 162, 245, 0.25));
+  }
+}
+
+.somaflow-pulse-logo {
+  animation: somaflow-pulse 2.8s ease-in-out infinite;
+  will-change: transform, filter;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .somaflow-pulse-logo {
+    animation: none;
+    transform: none;
+  }
+}
