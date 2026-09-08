@@ -8,6 +8,368 @@ Se você roda o DeskcommCRM numa VPS, **leia a seção da versão para a qual es
 
 ## [Não lançado]
 
+## [1.16.1] — 2026-09-07
+
+### Corrigido
+
+- **A conferência de imagens do instalador passa a olhar o registro que a instalação usa** Antes de baixar as imagens, o instalador confere se as três existem e são
+  públicas. Essa conferência olhava sempre para o registro do projeto, mesmo em
+  instalações configuradas para usar outro — então ela dizia "está tudo publicado"
+  depois de conferir pacotes que não eram os que a instalação ia baixar, e o erro
+  só aparecia mais tarde, na hora de subir. Agora ela olha o mesmo registro que a
+  instalação usa.
+
+  Nada muda para quem não trocou o registro: continua conferindo os mesmos
+  pacotes, com o mesmo resultado.
+
+## [1.16.0] — 2026-09-07
+
+### Adicionado
+
+- **Teste a IA no WhatsApp antes de abrir o atendimento ao público** Em Conexões, administradores podem ativar o modo de teste e cadastrar números
+  de confiança por canal. Lista vazia bloqueia respostas automáticas; as mensagens
+  continuam chegando ao Inbox para atendimento humano. Após validar, a abertura
+  ao público exige confirmação e preserva a lista para uma futura rodada de testes.
+
+  Novos canais começam em teste, sem números autorizados. Canais existentes e
+  reconexões preservam a configuração atual. A atualização inclui a migration
+  0218 no baseline; não é preciso editar variáveis de ambiente.
+
+  Muda também para quem não vai usar o modo de teste: o follow-up automático por
+  silêncio passa a usar a mesma regra do atendimento de entrada, e num canal com
+  acesso da IA restrito ele deixa de inscrever contato cuja autorização já venceu
+  (o prazo é o de sempre, `AI_ALLOWLIST_TTL_DAYS`). Antes bastava ter sido
+  autorizado um dia; agora a autorização precisa estar valendo.
+
+### Corrigido
+
+- **A avaliação automática do atendimento volta a rodar em quem não usa Anthropic** A rodada que revisa os atendimentos e sugere melhorias pedia um modelo pelo nome
+  fixo `claude-haiku-4-5`. Esse nome só existe no vocabulário da Anthropic, então
+  em instalação apontada para outro provedor (OpenRouter, por exemplo) o provedor
+  recusava a chamada e a rodada morria a cada disparo, sem sugestão nenhuma
+  chegando à tela de Propostas. Agora os dois pontos do flywheel usam o modelo
+  escolhido no painel de provedores e, na falta dele, o padrão da organização — o
+  mesmo caminho de todos os outros pontos de IA.
+
+- **A chave de IA cadastrada pela organização passa a valer também na medição de clima e na resposta do bot** Dois pontos de IA — "Medir o clima da conversa" e a resposta do bot — só usavam
+  a credencial cadastrada em IA › Credenciais quando havia uma escolha explícita
+  no painel de provedores. Sem essa escolha, eles iam direto para a chave que veio
+  na instalação (`.env`), ignorando a chave que a organização cadastrou e validou
+  na tela. Numa instalação cuja chave de `.env` estava revogada, isso aparecia
+  como classificação de clima falhando com erro de autenticação enquanto o agente,
+  que já usava a credencial da organização, respondia normalmente no mesmo minuto.
+
+  Agora os dois seguem a mesma ordem do resto do produto: a escolha do painel,
+  depois a credencial ativa e validada do provedor da organização e, só então, a
+  chave da instalação. Nada a fazer — quem já tem credencial cadastrada passa a
+  usá-la na próxima chamada.
+
+- **O rodapé volta a mostrar a versão que está no ar, e não a de um rollback antigo** Quando uma atualização pela tela falha e o app volta sozinho para a versão
+  anterior, o sistema passa a mostrar essa versão anterior — o que está certo:
+  naquele momento o código baixado no servidor já é o novo, mas o app que subiu é
+  o velho, e quem sabe qual dos dois está no ar é o registro da tentativa.
+
+  O que faltava era o fim dessa validade. O app troca de versão por outros
+  caminhos que não passam por essa tela — um deploy automático, um comando no
+  terminal, a atualização feita à mão —, e nenhum deles registra uma tentativa
+  nova. Sem isso, a tentativa que falhou continuava sendo a última notícia, para
+  sempre: numa instalação real, o rodapé anunciou por oito dias uma versão de 28
+  de agosto, atravessando vários deploys, enquanto a versão no ar era outra.
+
+  Agora a tentativa antiga só nomeia a versão no ar enquanto for a notícia mais
+  recente. Se o servidor reportou a versão depois de a tentativa ter terminado, é
+  o servidor que vale. Isso conserta junto duas coisas que bebiam da mesma fonte:
+  o aviso de "atualização disponível", que comparava contra a versão errada, e as
+  notas de versão, que começavam a listar de um ponto errado do histórico.
+
+  Nada muda para quem opera: nenhuma configuração nova, nenhum passo de
+  atualização, nenhuma mudança no banco.
+
+- **O espanhol cobre mais telas e mais mensagens de erro** Várias telas e mensagens de erro apareciam em português mesmo com a
+  organização configurada para espanhol: o badge de status de um agente de
+  IA, o painel de Segurança (STOP, LGPD, ritmo de envio…), os avisos de
+  provedores de IA, os erros de verificação em duas etapas, os avisos de
+  número/conta do WhatsApp na Central, o resumo de impacto ao excluir um
+  número, e toda a mensagem de erro do módulo de Tarefas. Numa tela de
+  Agenda da organização, o nome que o próprio operador deu a um tipo de
+  atendimento chegou a ser traduzido por engano, trocando "Retorno" por
+  "Seguimiento". Todos os casos foram corrigidos.
+
+- **O botão de importar planilha volta a funcionar, e os leads entram na primeira etapa aberta do funil** O botão *Importar planilha*, no quadro do funil, estava morto. Quem escolhia o
+  funil e mandava a planilha recebia sempre o mesmo aviso de erro — *"Escolha o
+  funil e a etapa de destino"* — mesmo tendo escolhido o funil. Nenhum lead era
+  criado, e não havia nada que o operador pudesse fazer para contornar: a tela não
+  tem, nem deveria ter, um campo de etapa. A capacidade foi anunciada na 1.14.0 e
+  seguiu assim nas duas atualizações seguintes — quem instalou a 1.14.0, a 1.15.0
+  ou a 1.15.1 nunca conseguiu importar uma planilha.
+
+  A causa era essa incompatibilidade mesmo: a tela pergunta só o funil, porque
+  planilha traz gente nova e gente nova entra no começo do funil; o servidor, por
+  outro lado, exigia que a etapa viesse junto. Agora o servidor resolve a etapa
+  sozinho, que é o que a tela sempre prometeu.
+
+  E ele resolve a etapa **aberta** de menos avançada — pulando as etapas de ganho
+  e as de perda. Isso importa para quem reorganizou o próprio funil: numa
+  instalação onde uma etapa do tipo *Pago* ou *Cancelado* foi arrastada para a
+  primeira coluna, a importação teria feito a planilha inteira nascer como negócio
+  já ganho, ou teria recusado todas as linhas devolvendo *"0 leads criados"* sem
+  explicar por quê. Quem nunca mexeu na ordem das etapas não estava exposto a
+  isso, porque o funil que vem pronto já começa com uma etapa aberta.
+
+  Nada muda no dia a dia de quem opera a instalação: nenhuma configuração nova,
+  nenhum passo de atualização, e nenhum lead já importado é tocado.
+
+  O achado é de @JowaniOrantes, que encontrou o problema usando o sistema pela
+  tela enquanto conferia a tradução para o espanhol — não lendo código.
+
+## [1.15.1] — 2026-09-05
+
+### Corrigido
+
+- **Quem se cadastra numa instalação que não pede confirmação de e-mail para de ser mandado esperar um e-mail que não chega** Quem administra a instalação pode desligar a confirmação de e-mail no provedor
+  de autenticação — é uma escolha comum, e às vezes é o estado em que uma VPS
+  recém-montada já vem. Nesse modo, criar a conta **já entra no sistema**: não
+  existe link nenhum para clicar, porque e-mail nenhum é enviado.
+
+  A tela do cadastro não sabia disso e dizia assim mesmo: *"Enviamos um link de
+  confirmação para o seu e-mail. Abra o e-mail e clique no link para ativar sua
+  conta."* A pessoa fazia o que a tela mandou — esperava. O e-mail nunca chegava.
+  Ela estava, o tempo todo, do lado de dentro, com a conta pronta e sem empresa
+  nenhuma configurada, sem nenhuma razão para descobrir sozinha que bastava
+  continuar.
+
+  Agora, quando o sistema percebe que a pessoa já entrou, ele a leva direto ao
+  passo seguinte, em vez de mandá-la esperar: quem se cadastrou por conta própria
+  vai concluir a configuração da empresa, com o nome que ela mesma digitou no
+  cadastro já preenchido; quem se cadastrou a partir de um convite vai aceitar o
+  convite, e continua sem ganhar uma empresa própria por engano.
+
+  Para quem opera uma instalação, nada muda no dia a dia: nenhuma configuração
+  nova, nenhum passo de atualização. Quem já usa o sistema com confirmação de
+  e-mail ligada não vê diferença nenhuma — a tela do e-mail continua igual, porque
+  nesse caso o e-mail realmente vai chegar.
+
+  O achado é de @KIRAzinx566, que instalou o sistema para um cliente e o encontrou
+  parado nessa tela.
+
+## [1.15.0] — 2026-09-05
+
+### Adicionado
+
+- **Meta Ads — o desempenho das campanhas dentro do CRM** Análise ganhou uma tela de Meta Ads: as campanhas da conta de anúncios com
+  resultado, custo por resultado, gasto, alcance, CPM, CTR, CPC e mais, lidos da
+  plataforma quando se clica em Atualizar.
+
+  Nada é armazenado — só a credencial de leitura, criptografada, conectada em
+  Configurações › Meta Ads. A conexão é só de leitura: nada é alterado na conta de
+  anúncios.
+
+- **A venda fechada no CRM volta para o anúncio que a trouxe** Quem paga tráfego não tinha como contar à plataforma quais leads viraram
+  dinheiro, então o algoritmo otimizava por conversa iniciada, não por venda.
+
+  Agora, marcar um negócio como ganho reporta a venda, com o valor. Configura-se
+  em Configurações › Conversões, com token criptografado, botão de pausa e a lista
+  do que falhou. Sem credencial, nada muda.
+
+- **O compromisso da agenda agora convida o cliente por e-mail** Não havia onde escrever o e-mail do cliente, então o convite do Google nunca era
+  enviado a ninguém.
+
+  O novo agendamento ganhou um campo de convidado: ele recebe o convite e a
+  resposta aparece no evento. Em branco, tudo segue como antes.
+
+- **Juntar contatos duplicados** A mesma pessoa cadastrada duas vezes agora vira uma só, pela tela. Em
+  **Contatos**, o botão "Duplicados" mostra os cadastros que parecem ser da mesma
+  pessoa, lado a lado; você escolhe qual fica e junta.
+
+  O sistema encontra os pares que o cadastro sozinho não vê: o mesmo celular
+  escrito de dois jeitos (com e sem o nono dígito), o mesmo e-mail, e o número que
+  o WhatsApp encontrou repetido e deixou marcado esperando alguém decidir.
+
+  **Nada de histórico se perde.** Mensagens, negócios do funil, atividades,
+  tarefas e anexos passam todos para o cadastro que fica — inclusive o que ainda
+  não existia quando isto foi escrito: a lista do que precisa ser movido é lida do
+  próprio banco na hora, não de uma lista fixa. O WhatsApp do cadastro antigo passa
+  a cair no que ficou, então a mensagem seguinte não recria a duplicata.
+
+  Quando os dois cadastros já conversavam pelo **mesmo número de WhatsApp**, a
+  *conversa* do cadastro antigo não pode ser transferida — o sistema guarda uma
+  conversa por pessoa em cada número, e o cadastro que fica já tem a dele. As
+  mensagens vão todas para quem ficou; a conversa antiga permanece registrada, e
+  a tela avisa **quantos** registros ficaram para trás em vez de dizer só
+  "pronto".
+
+  O cadastro absorvido **não é apagado** — ele sai da lista de contatos e fica
+  como registro da fusão, e é isso que libera o telefone e o e-mail para o
+  cadastro que ficou herdar o que faltava nele. Campos que o cadastro vencedor já tinha preenchidos nunca são
+  sobrescritos; CPF e consentimento de contato não são herdados de propósito, por
+  serem registro legal de uma pessoa específica.
+
+  Junção fica com quem tem papel de **gerente** ou acima, aparece no histórico do
+  negócio e é registrada na auditoria. **Não há como desfazer**, então a escolha
+  de qual cadastro fica é sempre sua — o sistema apenas sugere o de atividade mais
+  recente — e antes de juntar aparece uma confirmação dizendo, pelo nome, qual
+  cadastro fica e qual é absorvido. Contato anonimizado por pedido de LGPD nunca entra numa junção.
+
+  Nada muda para quem não usar: sem clicar em "Duplicados", tudo segue como antes.
+
+  Isto veio da contribuição de James, da Clínica Centro do Sorriso
+  (**@clinicacentrodosorrisosc-code**), que resolvia o mesmo problema no nível do
+  card do funil; aqui a peça é o contato, que é a mesma em todo tipo de negócio.
+
+- **Selecionar vários cards do funil e agir neles de uma vez** Mover trinta negócios de etapa deixou de ser trinta arrastes. No quadro do
+  funil, cada card ganhou uma caixa de seleção, e o cabeçalho de cada etapa ganhou
+  outra que marca a etapa inteira de uma vez. Segurando **Shift**, um clique
+  seleciona tudo entre o card anterior e o que você clicou; **Ctrl** (ou **⌘**)
+  continua marcando um a um. O clique simples segue abrindo o negócio, como sempre.
+
+  Com algo selecionado, a barra que aparece no rodapé faz o resto: mover para
+  outra etapa, aplicar ou tirar etiqueta, excluir — e agora também
+  **trocar o responsável para qualquer atendente da equipe**, não só para você.
+  Redistribuir a carteira de quem saiu de férias virou uma operação de dois
+  cliques.
+
+  Três detalhes que só se percebe usando:
+
+  - A contagem no alto da etapa mostra quantos você marcou dela ("7/23"), para não
+    ser preciso conferir card a card.
+  - Seleções grandes não esbarram mais num limite invisível: acima de cinquenta, o
+    sistema divide sozinho. Se algo falhar no meio, ele diz **quantos** já haviam
+    sido alterados, em vez de só "deu erro".
+  - A ordem dos cards movidos é preservada na etapa de destino, e eles entram no
+    fim dela. Antes, um lote inteiro caía na mesma posição — o quadro se
+    reorganizava sozinho a cada atualização, e o primeiro arraste depois disso
+    podia jogar um card para um lugar imprevisível. Isso acabou.
+
+  A barra também passou a falar o vocabulário do funil: quem renomeou "Lead" para
+  "Cliente" ou "Pedido" vê a própria palavra.
+
+  Nada precisa ser ligado, e nada muda para quem prefere arrastar um por um.
+
+  Isto veio da contribuição de James, da Clínica Centro do Sorriso
+  (**@clinicacentrodosorrisosc-code**).
+
+- **Relatório de atividades — o que aconteceu no período, e quem fez** Uma tela nova, **Atividades**, dentro de Análise: o que aconteceu na operação
+  nos últimos 7, 30 ou 90 dias. Até aqui o histórico só existia dentro de cada
+  negócio — responder "o que a equipe fez esta semana" obrigava a abrir negócio
+  por negócio.
+
+  A tela abre com a resposta em três números: quanto do trabalho foi **da equipe**,
+  quanto foi **dos agentes de IA**, e quanto foi **automático** — regra, sistema,
+  ou a própria pessoa atendida. Um mês inteiro atendido pela IA e um mês inteiro
+  atendido pela equipe têm o mesmo resultado no funil e histórias opostas; esta é
+  a tela que separa as duas.
+
+  Abaixo, o período em barras por dia (dia parado aparece como buraco, que é a
+  informação), o ranking de quem trabalhou, o ranking do que foi feito, e a lista
+  dos acontecimentos mais recentes — cada linha com um atalho para o negócio de
+  onde ela veio. Quando a lista é cortada, a tela diz que cortou e quantos houve
+  no total: período movimentado não vai parecer calmo.
+
+  O dia é agrupado no fuso de quem lê, não no do servidor: o atendimento das 21h
+  conta no dia em que aconteceu.
+
+  Cada pessoa vê o que já podia ver — quem atende em modo "só os meus" continua
+  vendo só os próprios negócios, e o relatório de uma organização nunca conta a
+  atividade de outra.
+
+  Isto veio da contribuição de James, da Clínica Centro do Sorriso
+  (**@clinicacentrodosorrisosc-code**).
+
+- **Tarefas com prazo, no CRM** "Ligar de volta na terça" agora tem onde morar. Uma tela nova, em
+  **CRM › Tarefas**, guarda o que o time combinou fazer — com prazo, prioridade
+  e a opção de prender a tarefa a um negócio.
+
+  A lista separa o que já venceu do que vence hoje, desta semana e mais tarde. E
+  há um calendário do mês para quem prefere ver o prazo no lugar dele: clicar num
+  dia abre a tarefa já com aquela data.
+
+  Tarefa presa a um negócio deixa uma linha na história dele. Quem abre o card vê
+  que há um retorno combinado, em vez de encontrar uma conversa que parou sem
+  explicação — e a conclusão fica registrada também.
+
+  Quem só acompanha (papel "visualizador") enxerga o que o time combinou; criar,
+  editar e apagar é a partir do papel de atendente.
+
+  Isto veio da contribuição de James, da Clínica Centro do Sorriso
+  (**@clinicacentrodosorrisosc-code**), que usou o sistema numa operação real por
+  seis semanas e construiu o módulo do zero.
+
+- **Recomeçar do zero os dados de teste da organização** Quem passou dias experimentando — mandando mensagem para o próprio número,
+  criando contato de mentira, arrastando negócio no funil — agora limpa tudo antes
+  de atender cliente de verdade.
+
+  Em **Configurações › Organização** há a **Zona de perigo**: ela apaga de vez as
+  mensagens, conversas, negócios, contatos, agendamentos e pedidos daquela
+  organização. Continuam de pé a equipe, as configurações, os funis, os agentes de
+  IA e os canais de WhatsApp — o que deu trabalho para configurar não se refaz.
+
+  Só quem administra enxerga o botão, e ele não dispara no clique: é preciso
+  digitar o nome da empresa como está cadastrado. O sistema confere esse nome de
+  novo no servidor e registra na auditoria quem apagou, quando e quanto.
+
+  Contribuição de Mauricio Garcia (**@maugarciasa**).
+
+### Alterado
+
+- **Nuvemshop sai do menu lateral** A Nuvemshop saiu do menu, por decisão do dono do produto. Nada é apagado: quem
+  tem a loja conectada continua conectado, e a tela segue alcançável pela busca.
+
+- **Análise ganhou uma tela de visão geral, e o menu voltou a caber** Com a chegada de **Atividades**, o grupo Análise da barra lateral passou a ter
+  cinco telas — e o menu inteiro deixou de caber num notebook comum, obrigando a
+  rolar para ver o fim da lista. Grupo que só aparece se você rolar é grupo que
+  ninguém sabe que existe. É a mesma história que o CRM viveu com a chegada de
+  Tarefas, e tem a mesma resposta.
+
+  Agora a Análise tem sua própria tela de visão geral, igual à que o CRM e o
+  Agente de IA já tinham: **Análise › Ver tudo em Análise**. Ela lista as cinco
+  telas do grupo com a frase que explica cada uma, separadas entre os números que
+  se olham toda semana e o histórico que se consulta quando alguém pergunta por
+  quê.
+
+  No menu ficam **Desempenho**, **Meta Ads** e **Atividades** — as três perguntas
+  que se refazem toda semana: como foi o mês, quanto custou trazer quem chegou, e
+  o que a equipe e a IA fizeram no período. **Evolução da IA** e **Audit Log**
+  passaram a morar dentro da visão geral: são visitas de propósito — revisar o
+  agente, ou descobrir quem mexeu em quê depois que algo deu errado —, não telas
+  de passagem. As duas continuam alcançáveis pela busca (Ctrl/⌘ + K) pelo nome de
+  sempre, e nenhum endereço mudou: link salvo continua funcionando.
+
+  Nada muda para quem opera a instalação: nenhuma configuração nova, nenhum passo
+  de atualização.
+
+- **O CRM ganhou uma tela de visão geral, e o menu voltou a caber** Com a chegada de **Tarefas**, o grupo CRM da barra lateral passou a ter cinco
+  telas — e o menu inteiro deixou de caber num notebook comum, obrigando a rolar
+  para ver os últimos grupos. Grupo que só aparece se você rolar é grupo que
+  ninguém sabe que existe.
+
+  Agora o CRM tem sua própria tela de visão geral, igual à que o Agente de IA já
+  tinha: **CRM › Ver tudo em CRM**. Ela lista as cinco telas do grupo com a frase
+  que explica cada uma, separadas entre o que se usa todo dia e o que se define
+  uma vez.
+
+  No menu ficam **Funis**, **Contatos** e **Tarefas** — o que se abre toda manhã.
+  **Produtos** e **Etapas do funil** passaram a morar dentro da visão geral: são
+  telas de montagem (cadastrar o catálogo, desenhar as colunas do funil), não de
+  uso diário. As duas continuam alcançáveis pela busca (Ctrl/⌘ + K) pelo nome de
+  sempre, e nenhum endereço mudou — link salvo continua funcionando.
+
+  Nada muda para quem opera a instalação: nenhuma configuração nova, nenhum passo
+  de atualização.
+
+### Corrigido
+
+- **O aviso de "canal calado" para de ficar preso aberto na Central** Quando a janela de envio do WhatsApp fechava (fora do horário anti-banimento,
+  por padrão 7h–22h), a Central mostrava um aviso avisando que as respostas
+  estavam esperando a janela abrir. O aviso deveria desaparecer sozinho assim
+  que a janela reabrisse — e não desaparecia. Ele ficava aberto o dia inteiro,
+  mesmo com o agente respondendo normalmente, dando a impressão de canal (ou
+  loja) fechado quando não estava.
+
+  A causa era uma coluna que o código esperava e o banco não tinha:
+  `agent_inbox_items.resolved_at`. Toda tentativa de fechar o aviso falhava
+  silenciosamente. Agora a coluna existe, e o aviso fecha sozinho no mesmo
+  turno em que a janela é encontrada aberta, como sempre foi a intenção.
+
 ## [1.14.0] — 2026-09-04
 
 ### Adicionado
@@ -2773,7 +3135,11 @@ Primeira versão marcada do DeskcommCRM. O projeto vinha sendo desenvolvido publ
 
 - **Node 22 é obrigatório para desenvolvimento.** A suíte de invariantes instancia o cliente do Supabase, que exige o `WebSocket` global — nativo apenas a partir do Node 22. Isso não afeta quem apenas hospeda: a VPS roda a imagem pronta.
 
-[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.14.0...HEAD
+[Não lançado]: https://github.com/melgarafael/DeskcommCRM/compare/v1.16.1...HEAD
+[1.16.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.16.0...v1.16.1
+[1.16.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.15.1...v1.16.0
+[1.15.1]: https://github.com/melgarafael/DeskcommCRM/compare/v1.15.0...v1.15.1
+[1.15.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.12.0...v1.13.0
 [1.12.0]: https://github.com/melgarafael/DeskcommCRM/compare/v1.11.1...v1.12.0

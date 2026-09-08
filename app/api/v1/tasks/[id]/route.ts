@@ -1,3 +1,4 @@
+import { requireSupportWrite } from "@/lib/impersonate/support";
 /**
  * PATCH  /api/v1/tasks/[id] — edita uma tarefa.
  * DELETE /api/v1/tasks/[id] — apaga uma tarefa.
@@ -18,6 +19,7 @@ import { z } from "zod";
 import { ok, fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
+import { traduzir } from "@/lib/i18n/dicionario";
 import { createClient } from "@/lib/supabase/server";
 import { registraAtividadeDaTarefa } from "@/lib/tarefas/atividade";
 import { PRIORIDADES_DA_TAREFA, SITUACOES_DA_TAREFA, type Tarefa } from "@/lib/tarefas/tipos";
@@ -47,15 +49,19 @@ interface Contexto {
 }
 
 export async function PATCH(req: NextRequest, ctx: Contexto): Promise<Response> {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   const requestId = randomUUID();
   const { id } = await ctx.params;
 
   const authz = await requireRole("agent", { requestId, resource: "crm_tasks" });
   if (!authz.ok) return authz.response;
+  const t = (texto: string) => traduzir(texto, authz.user.idioma);
 
   const parsed = edicaoSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return fail("validation_failed", "Dados inválidos.", 422, {
+    return fail("validation_failed", t("Dados inválidos."), 422, {
       requestId,
       details: parsed.error.flatten().fieldErrors as Record<string, unknown>,
     });
@@ -83,14 +89,14 @@ export async function PATCH(req: NextRequest, ctx: Contexto): Promise<Response> 
 
   if (error) {
     if (error.code === "PGRST116") {
-      return fail("not_found", "Tarefa não encontrada.", 404, { requestId });
+      return fail("not_found", t("Tarefa não encontrada."), 404, { requestId });
     }
     if (error.code === "23503") {
-      return fail("validation_failed", "O negócio ou contato vinculado não existe.", 422, {
+      return fail("validation_failed", t("O negócio ou contato vinculado não existe."), 422, {
         requestId,
       });
     }
-    return fail("internal_error", "Erro ao salvar a tarefa.", 500, { requestId });
+    return fail("internal_error", t("Erro ao salvar a tarefa."), 500, { requestId });
   }
 
   const tarefa = data as unknown as Tarefa;
@@ -120,11 +126,15 @@ export async function PATCH(req: NextRequest, ctx: Contexto): Promise<Response> 
 }
 
 export async function DELETE(_req: NextRequest, ctx: Contexto): Promise<Response> {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   const requestId = randomUUID();
   const { id } = await ctx.params;
 
   const authz = await requireRole("agent", { requestId, resource: "crm_tasks" });
   if (!authz.ok) return authz.response;
+  const t = (texto: string) => traduzir(texto, authz.user.idioma);
 
   const supabase = await createClient();
   // `.select()` no delete para saber se ALGUMA linha saiu. Sem isso, apagar uma
@@ -138,10 +148,10 @@ export async function DELETE(_req: NextRequest, ctx: Contexto): Promise<Response
     .select("id");
 
   if (error) {
-    return fail("internal_error", "Erro ao apagar a tarefa.", 500, { requestId });
+    return fail("internal_error", t("Erro ao apagar a tarefa."), 500, { requestId });
   }
   if (!data || data.length === 0) {
-    return fail("not_found", "Tarefa não encontrada.", 404, { requestId });
+    return fail("not_found", t("Tarefa não encontrada."), 404, { requestId });
   }
 
   await audit({

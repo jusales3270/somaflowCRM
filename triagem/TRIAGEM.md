@@ -36,6 +36,38 @@ O SHA curto da `main` entra em **toda** afirmação daí em diante. Número sem 
 
 ---
 
+## 0-bis. A fila não é o que está aberto
+
+`gh pr list --state open` não é a fila. Um PR fechado **pelo próprio autor**, sem nenhum veredito
+nosso, é trabalho perdido — não decisão dele. Já aconteceu **cinco vezes** nesta casa, e a doutrina
+só registrava o sintoma ("três pessoas fecharam o próprio PR achando que tinham errado") sem virar
+passe. Vira agora:
+
+```bash
+gh pr list --state closed --limit 20 --json number,author,closedAt,mergedAt \
+  --jq '.[] | select(.mergedAt == null) | "#\(.number) \(.author.login) \(.closedAt)"'
+# para cada um, as DUAS perguntas:
+gh api repos/{owner}/{repo}/issues/<n>/timeline --jq '.[]|select(.event=="closed")|.actor.login'
+gh pr view <n> --json comments --jq '[.comments[]|select(.body|test("pass=9|pass=10"))]|length'
+```
+
+**Fechado pelo autor + zero veredito nosso = recuperar.** Em 06/09/2026, @maugarciasa fechou #595 e
+#596 **no mesmo segundo**, duas horas depois de abrir. Levavam três consertos medidos **em
+produção**: um id de modelo fixo (`claude-haiku-4-5`) que matava o flywheel em toda instalação
+não-Anthropic; a credencial da organização sendo ignorada em favor da chave do `.env`; e um rodapé
+anunciando por oito dias uma versão que não estava no ar. Os três seguiam vivos na `main`.
+
+Recuperar **não** é mergear o branch dele. É extrair o que serve a **qualquer** instalação, com
+`--author` preservado, e deixar de fora a configuração do fork dele. No #596, o que ficou de fora
+incluía `release.yml` com `&& false` nos dois jobs — **certo** no fork (não herda o GitHub App do
+upstream, e ele explicou isso no comentário), e que aqui desligaria o corte de release do projeto
+inteiro, em silêncio. É a mesma linha do passe 8: o que serve a todos entra; o que serve a um, não.
+
+E a métrica que isto move é a do passe 10 — o tempo entre abrir o PR e a primeira resposta humana.
+Duas horas de silêncio foram suficientes para três consertos de produção quase se perderem.
+
+---
+
 ## 1. Acolhida — em minutos, sem uma linha de avaliação
 
 Nesta ordem:
@@ -250,6 +282,95 @@ controle mais barato de todos e leva dez segundos.
 > **A regra curta:** timeout não é asserção. Antes de atribuir um vermelho a um PR, pergunte
 > *quem mais estava usando esta máquina* e *este job chegou a rodar teste?*
 
+### Uma quinta, e ela é a mais convincente: o ambiente de QA visual estragou a árvore
+
+Montar o ambiente de prova de tela **muda o worktree**, e três dessas mudanças fazem a suíte
+unitária reprovar por motivos que nada têm a ver com os PRs. Medido em 06/09/2026, ao rodar a
+conta de N vias (passe 11-bis) no MESMO worktree onde o QA visual tinha rodado: **13 arquivos
+vermelhos**, e nenhum era dos cinco PRs.
+
+| o que o setup faz | o que reprova |
+|---|---|
+| `mv supabase/migrations /tmp/...` (é o que o CI faz, para o `supabase start` não aplicar a cadeia) | `manifest-x-migrations`, `kind-check-migration-x-baseline`, `migracao-nao-arma-ninguem`, `migrations-nao-encolhem-vocabulario` — o diretório está VAZIO |
+| `cp .env.e2e .env.local` (o seed exige) | `rate-limit` e tudo que valida env: `tests/setup/vitest.setup.ts` carrega `.env.local` para dentro do `process.env` |
+| specs de prova escritas à mão em `tests/e2e/` | `e2e-cobertura-completa` — spec no disco que o CI não declara |
+| capturas em `.superpowers/evidence/` | `evidencia-citada` |
+
+O sintoma é perfeito: um vermelho grande, plausível, logo depois de juntar cinco PRs — exatamente
+onde você **espera** que a interação apareça.
+
+**A regra:** o worktree do QA visual é descartável e **não serve para rodar gate**. A conta de N
+vias roda numa árvore limpa. Antes de acreditar em qualquer vermelho de suíte ali:
+
+```bash
+git status --porcelain | wc -l          # tem de ser 0
+ls supabase/migrations/ | wc -l         # tem de ser >0
+ls .env.local 2>/dev/null               # tem de NÃO existir
+```
+
+E a reconciliação do `CLAUDE.md` denuncia isso de graça: naquela rodada o rodapé disse `14 failed`
+e o `grep -c FAIL` contou `17`. Os dois números medem coisas diferentes, mas a divergência é o
+convite para olhar QUAIS arquivos — e ali os nomes contam a história inteira.
+
+---
+
+### Antes de tudo: num workflow de MATRIZ, o rodapé disponível é de METADE
+
+Quando um job de matriz falha, o GitHub **cancela os irmãos**. O irmão cancelado morre antes do
+bloco de resumo: não imprime `N failed`, não lista as specs e não mostra asserção nenhuma — só os
+`✘` da linha de progresso, que ninguém procura.
+
+Resultado: a disciplina correta desta casa — *"o rodapé é a autoridade, o grep é conveniência"* —
+encontra **o rodapé de uma metade** e o lê como o todo. E o erro é sempre na direção otimista.
+
+Medido em 2026-09-07, no PR #613:
+
+```
+e2e-parte (1): completed/failure   → 4 ✘, COM rodapé (`3 failed`, um dos ✘ é um test.fail)
+e2e-parte (2): completed/cancelled → 7 ✘, SEM rodapé nenhum
+```
+
+O triador contou **4** e escreveu isso no briefing de seis agentes. O número era **10**, em 9
+arquivos de spec — e **8 desses arquivos eram pré-existentes e intocados**, o que muda o veredito de
+*"conserte o que você trouxe"* para *"o PR quebra funcionalidade já entregue"*. Só apareceu porque um
+cético foi **contar os `✘`** em vez de ler o rodapé.
+
+**A conta, antes de qualquer conclusão sobre um workflow de matriz:**
+
+```bash
+gh run view <id> --json jobs --jq '.jobs[]|select(.name|startswith("<job>"))|"\(.name): \(.conclusion)"'
+gh run view <id> --log > /tmp/full.log
+for p in 1 2; do echo "parte $p: $(grep -acE "^<job> \($p\).*✘" /tmp/full.log)"; done
+```
+
+Irmão com `conclusion: cancelled` é **prova de que há falhas não relatadas do outro lado**. E ao
+pedir o rerun, note que `gh run rerun --failed` fala de `failed`: confirme que o job **cancelado**
+também voltou (`status: in_progress` nos dois) antes de esperar por ele.
+
+---
+
+### E há uma quarta origem: a sonda que você mesmo escreveu
+
+Antes de acreditar num diagnóstico de infra, confira se o comando que o produziu **existe**.
+
+```bash
+timeout 15 docker ps 2>&1 | head -3; echo "exit=$?"     # ⚠️ ERRADO, e otimista
+```
+
+`timeout` **não existe no macOS**. O `2>&1` joga `command not found` para dentro do pipe, e o
+`echo` reporta o exit do `head` — **zero**. A sonda que parece dizer *"o Docker está bem"* está
+dizendo *"o `head` funcionou"*. Medido nesta casa em 06/09/2026, com o daemon do Docker de fato
+fora do ar; o desfecho real veio de:
+
+```bash
+docker ps > /tmp/d.log 2>&1; echo "exit=$?"; head -2 /tmp/d.log   # exit=1, daemon fora
+```
+
+E o desfecho importa mais do que parece: com o daemon caído, `pnpm test:db` — o check obrigatório
+`invariants` — fica impossível para **todos** os agentes ao mesmo tempo, e o veredito de cada um
+precisa dizer isso em `NÃO MEDIDO` em vez de herdar a frase otimista. Confira o daemon no passe 0,
+junto com o disco do 12-bis: são os dois instrumentos da triagem que falham em silêncio.
+
 ---
 
 ## 4. Complemento — o que os gates não provam
@@ -358,6 +479,58 @@ E ao consertar o recorte, meça as **três** direções: limpo → verde; sabota
 vermelho; sabotado no caminho antigo → **ainda** vermelho. Sem a terceira, você pode ter trocado
 cobertura nova por cobertura velha e chamado isso de conserto.
 
+### Duas regras de ordem e de régua, as duas pagas em 06/09/2026
+
+**Commite ANTES de sabotar.** `git checkout -- <arquivo>` restaura para o **HEAD**, não para o
+estado de antes da sabotagem. Se o conserto ainda não está commitado, ele volta junto — e o
+sintoma é traiçoeiro, porque o teste volta a **passar**. Custou o conserto de
+`components/agenda/GradeDaAgenda.tsx`: a sabotagem provou exatamente o que devia (1 vermelho,
+nomeando `:710`) e a restauração desfez o trabalho que ela estava validando. O controle que
+denuncia na hora é o `numstat` antes do `checkout`:
+
+```bash
+git diff --numstat -- <arquivo>   # ANTES: só as linhas da sabotagem, se o conserto está commitado
+git commit ... && <sabota> && <mede> && git checkout -- <arquivo>
+git diff --numstat -- <arquivo>   # DEPOIS: vazio
+```
+
+**O limiar de um teste sai da MEDIÇÃO, nunca do chute.** Um controle positivo escrito como
+`toBeGreaterThan(100)` reprovou contra o valor real de **57** — o número foi imaginado, e o
+vermelho lia como defeito do conserto. Meça, escreva o número medido **e o recorte a que ele se
+refere** no comentário (57 no recorte que o teste lê, 140 na superfície inteira: são réguas
+diferentes), e ponha o piso bem abaixo dele. Piso colado no valor de hoje reprova o próximo PR que
+mover um arquivo de lugar — e aí alguém o afrouxa sem ler o porquê.
+
+E **preveja a contagem antes de rodar**: reprovar *menos* que o previsto é ponto cego da guarda;
+reprovar *mais* é a sabotagem alcançando o que você não queria medir.
+
+---
+
+## 6-bis. O arquivo onde a varredura NÃO foi mecânica
+
+Num PR que aplica a mesma transformação a **N** arquivos — i18n, renomeação, migração de API —, a
+premissa *"é mecânico, logo não regride"* é verdadeira em N−1 arquivos e falsa em um. **Procure esse
+um**: é ele que decide o veredito, e é o único lugar onde esse tipo de PR machuca.
+
+A sonda é o diff, não a leitura — dentro do escopo da varredura, ache as linhas que **não** têm a
+forma da transformação:
+
+```bash
+gh pr diff <n> > /tmp/d.patch
+# ex.: varredura que só deveria ENVOLVER literais em t() — toda linha `-` cujo
+# par `+` não seja a mesma string envolvida é candidata
+grep -nE '^-' /tmp/d.patch | grep -vE 't\(' | head -40
+```
+
+Medido no PR #600: **202 arquivos**, e um só onde a mensagem foi *reescrita* em vez de envolvida.
+`lib/catalogo/planilha.ts` deixou de dizer QUAL coluna da planilha falta — quem tinha a coluna
+`nome` e não tinha a de preço passava a receber um pedido pela coluna que já tinha, em pt-BR, no
+primeiro contato com o catálogo. Única regressão do PR.
+
+O medidor não a viu **porque aceitou a premissa** e escreveu "risco para pt-BR: nulo por
+construção". Quem a achou foi o cético, atacando exatamente essa frase. É o argumento do passe 7
+virado para dentro: a afirmação mais confortável do seu próprio relatório é a que merece a sonda.
+
 ---
 
 ## 7. Teste a própria suspeita antes de exigir
@@ -379,6 +552,42 @@ O que é mecânico, você conserta — branch própria, commit próprio, credita
 corpo. O que muda uma decisão de projeto do contribuidor **volta como pergunta**, nunca como patch
 por cima. A diferença entre as duas é: você consegue enunciar a intenção dele e mostrar que ela
 sobrevive à sua mudança?
+
+---
+
+## 8-0. O PR que não se mergeia — se reconstrói
+
+O passe 8-bis abaixo diz que a saída para conflito é `git merge <head-do-PR>`. Há **uma** exceção, e
+ela é absoluta: quando o branch traz um arquivo que **não pode entrar** — dump de banco, binário,
+credencial, artefato de sessão. Aí `merge` está fora, e `--squash` também: os dois levam a árvore do
+branch, e **história de git público é permanente**. Commit posterior de remoção não tira o blob.
+
+```bash
+git worktree add --detach <wt> origin/main && cd <wt> && git switch -c triagem/<n>-<slug>
+git diff --diff-filter=D --name-only origin/main..refs/triagem/pr<n>   # ele APAGA algo? replique
+git checkout refs/triagem/pr<n> -- .
+rm -f <o arquivo que não entra>
+git status --porcelain | grep -c <padrão>   # 0
+git status --porcelain | wc -l              # controle positivo: >0, senão a sonda está morta
+git commit --author="<Nome> <email>" ...    # autoria E a razão do squash, escritas
+```
+
+**Sonde o conteúdo por CATEGORIA antes de dimensionar a coisa**, e reporte a categoria — nunca o
+material: `postgres://`, `service_role`, `$2a$/$2b$`, `PRIVATE KEY`, e a contagem de linhas por
+bloco `COPY`. A diferença entre *"lixo de QA sintético"* e *"incidente de vazamento"* muda o que
+você escreve ao contribuidor, e ele merece saber qual dos dois foi. No caso medido (#600, um dump de
+1.180.884 bytes): `ai_provider_credentials` e `channel_sessions` com **zero linhas** — nem chave de
+IA nem webhook secret —, 1 hash bcrypt de domínio sintético e 114 refresh tokens de uma instância
+local. Lixo de QA. Saiu mesmo assim.
+
+E o conserto de **classe** é do projeto (passe 11): ali o `.gitignore` já tinha `.qa-vps/` e
+`backups/` com comentário sobre service key — **a doutrina existia e só o padrão faltava**, porque
+`backups/` não casa com `.qa-backups/`. Prove o padrão novo por ferramenta, nos dois sentidos:
+
+```bash
+git check-ignore -v <arquivo que deve ser ignorado>   # exit 0, e a linha do .gitignore
+git check-ignore -v <um .ts comum>                    # exit 1 — sem este, "pega" é "pega tudo"
+```
 
 ---
 
@@ -1450,3 +1659,87 @@ Cada um destes foi cometido de verdade nesta casa, e é por isso que estão escr
     (`0208_juntar_contatos_duplicados`), então um `sed` por palavra isolada não o alcança — e o
     `grep -c 0208` seguinte devolve `1` por causa de outra ocorrência qualquer, **confirmando um conserto
     que não aconteceu**. Confira pelo conteúdo da linha, não pela contagem.
+
+38. **Dois PRs mudam a MESMA linha, o git acusa o conflito, e os dois lados estão errados.** O passe
+    3-bis cobre o caso de sobreposição **zero** que colide num inventário. Este é o oposto e é mais
+    fácil de errar, porque parece um conflito comum de resolver.
+
+    Medido em 06/09/2026. O #597 **removeu** uma validação errada em `leads/import/route.ts`
+    (`if (!pipelineId || !stageId)` — o front nunca manda `stage_id`, então a rota devolvia 422 em
+    100% das importações). O #600, uma varredura de i18n saída da mesma `main`, **envolveu essa
+    mesma linha errada em `t()`**.
+
+    ```
+    <<<<<<< HEAD                        (o conserto)
+      if (!pipelineId) {
+        return fail("validation_failed", "Escolha o funil de destino.", 422, …
+    =======                             (a tradução)
+      if (!pipelineId || !stageId) {
+        return fail("validation_failed", t("Escolha o funil e a etapa de destino."), 422, …
+    >>>>>>> triagem/600-espanhol
+    ```
+
+    Pegar o lado do #600 devolve o bug; pegar o do #597 perde a tradução. **A resolução é a lógica de
+    um com a intenção do outro** — e as frases novas entram no dicionário, senão a cobertura de
+    idioma regride em silêncio, sem gate nenhum acusar.
+
+    Meça as prévias **entre si** antes de mergear o primeiro, não só contra a `main`:
+
+    ```bash
+    git merge-tree --write-tree <pr-a> <pr-b> > /tmp/mt.log 2>&1
+    grep -c CONFLICT /tmp/mt.log
+    ```
+
+    E escreva o porquê **no próprio arquivo**: quem abrir aquele trecho depois não terá os dois PRs
+    na cabeça, e a resolução parece arbitrária sem a razão ao lado.
+
+39. **A afirmação mais confortável do seu relatório é a que merece a sonda.** O passe 7 manda testar
+    a suspeita antes de virar exigência. Este é o mesmo argumento virado para dentro: teste a
+    **conveniência** antes de virar conclusão.
+
+    Duas formas medidas na mesma rodada, as duas em relatórios de agentes bem-feitos:
+    *"risco de regressão em pt-BR: nulo por construção"* (era nulo em 201 dos 202 arquivos), e
+    *"aquele exit=1 foi ruído de ambiente, não conta"* — uma medição contrária descartada por
+    hipótese. As duas passariam sem o cético; nenhuma das duas era desonesta.
+
+    Na prática: releia o seu próprio veredito procurando as frases que **encerram** uma investigação
+    em vez de abri-la, e re-meça essas.
+
+40. **A notificação de background traz o exit do `echo`, e ela inverte o sinal justamente na
+    sabotagem.** `nohup pnpm test:db … > /tmp/log 2>&1; echo "exit=$?"` rodado em background faz o
+    harness anunciar **"completed (exit code 0)"** com a suíte vermelha: o código reportado é o do
+    `echo`, o último comando da linha. Medido em 2026-09-07 — a notificação disse exit 0 e o rodapé
+    do log dizia `Tests 1 failed | 13 passed`.
+
+    O modo de falha 2 (`cmd | tail` mascara o exit) é o irmão desta, mas a consequência aqui é
+    pior, e é por isso que ela merece número próprio: numa **sabotagem**, o resultado esperado é o
+    vermelho. O "exit 0" não lê como "passou", lê como *"a sabotagem não alcançou o mecanismo"* —
+    ou seja, como *"o meu teste é frouxo"*. O sinal invertido corrompe exatamente a prova que existe
+    para desconfiar do verde, e o desfecho natural é reescrever um teste que estava correto.
+
+    Na prática: o exit code de uma notificação de background nunca é veredito. Leia o rodapé
+    (`Test Files` / `Tests`), que é a autoridade. Se quiser o exit real, ele tem de ser a ÚLTIMA
+    instrução da linha — ou grave-o: `cmd > log 2>&1; echo $? > /tmp/rc`.
+
+41. **O invariante que reprova pode ter nascido no MESMO PR que o mecanismo que ele vigia.** Diante
+    de um invariante vermelho, a pergunta reflexa é "o código está errado ou o teste está
+    mal-escrito?" — e ela pula uma pergunta anterior, que é mecânica e custa dois comandos:
+    **essa lei já estava na `main`?**
+
+    ```bash
+    git cat-file -e origin/main:<arquivo-do-teste>   # a lei é vigente ou proposta?
+    git grep -n "<símbolo da guarda>" origin/main     # e o mecanismo que ela vigia?
+    ```
+
+    Medido no PR #613: o invariante exigia que colisão de conversas ABORTASSE a fusão de contatos, e
+    tanto ele quanto a guarda que o atendia nasceram no mesmo commit do PR, nunca estiveram na
+    `main`. Do outro lado, a fusão parcial já era contrato publicado — função, rota, hook, diálogo —
+    travado por spec no check `e2e` obrigatório. Não era "código contra teste": era **lei proposta
+    contra lei vigente**, e a proposta perde. Tratado como invariante estabelecido, o vermelho
+    empurra para consertar o código — que teria quebrado o caminho dominante de um recurso já
+    publicado.
+
+    O corolário, que é o que separa isto de "apagar o teste incômodo": a preocupação da guarda não
+    se apaga junto com ela. Meça-a, e se ela sobreviver à medição, transforme-a em asserção **pelo
+    caminho de leitura de produção** — nunca por um `select` equivalente escrito à mão, que
+    continuaria verde se o filtro sumisse do código.

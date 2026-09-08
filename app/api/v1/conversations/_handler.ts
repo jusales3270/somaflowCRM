@@ -1,3 +1,4 @@
+import { createAdminClient } from "@/lib/supabase/admin";
 /**
  * Core handlers para /api/v1/conversations.
  *
@@ -8,6 +9,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api/types";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
+import { traduzir } from "@/lib/i18n/dicionario";
 import { CONVERSATION_TERMINAL_STATUSES } from "@/lib/schemas";
 import type {
   ListConversationsQuery,
@@ -80,7 +82,7 @@ function idsQueCabemNaURL(ids: string[]): string[] {
 
 const SELECT_COLS = `
   id, organization_id, contact_id, channel_session_id, channel, status,
-  status_changed_at, assigned_to_user_id, assigned_to_user_name, assignee_kind, assigned_at, last_inbound_at,
+  status_changed_at, service_revision, service_closed_at, service_started_at, current_demanda_id, assigned_to_user_id, assigned_to_user_name, assignee_kind, assigned_at, last_inbound_at,
   last_outbound_at, last_message_at, last_message_preview,
   unread_count_for_assignee, is_group, group_chat_id, tags, metadata,
   snooze_until, created_at, updated_at,
@@ -313,7 +315,13 @@ export async function listConversationsHandler(
   if (q.cursor) {
     const c = decodeCursor(q.cursor);
     if (!c) {
-      throw new ApiError(400, "invalid_cursor", undefined, ctx.requestId, "Cursor inválido.");
+      throw new ApiError(
+        400,
+        "invalid_cursor",
+        undefined,
+        ctx.requestId,
+        traduzir("Cursor inválido.", ctx.idioma ?? "pt-BR"),
+      );
     }
     const op = asc ? "gt" : "lt";
     if (c.sort) {
@@ -364,7 +372,13 @@ export async function getConversationHandler(
     throw new ApiError(500, "internal_error", undefined, ctx.requestId, error.message);
   }
   if (!data) {
-    throw new ApiError(404, "not_found", undefined, ctx.requestId, "Conversa não encontrada.");
+    throw new ApiError(
+      404,
+      "not_found",
+      undefined,
+      ctx.requestId,
+      traduzir("Conversa não encontrada.", ctx.idioma ?? "pt-BR"),
+    );
   }
   return data as unknown as Conversation;
 }
@@ -379,7 +393,6 @@ export async function patchConversationHandler(
   conversationId: string,
   input: PatchConversationInput,
 ): Promise<Conversation> {
-  const now = new Date().toISOString();
   const update: Record<string, unknown> = {};
 
   /**
@@ -416,44 +429,41 @@ export async function patchConversationHandler(
   }
 
   if (input.status !== undefined) {
-    update.status = input.status;
-    update.status_changed_at = now;
+    const observed = await getConversationHandler(supabase, ctx, conversationId);
+    const { error: statusError } = await createAdminClient().rpc("fn_service_status", {
+      p_org: ctx.organization_id, p_conversation: conversationId, p_status: input.status,
+      p_expected: input.expected_revision ?? observed.service_revision,
+    });
+    if (statusError) throw new ApiError(statusError.code === "40001" ? 409 : statusError.code === "P0002" ? 404 : 500,
+      statusError.code === "40001" ? "conflict" : statusError.code === "P0002" ? "not_found" : "internal_error", undefined, ctx.requestId, statusError.message);
   }
   if (input.tags !== undefined) {
     update.tags = input.tags;
   }
 
-  const { data, error } = await supabase
-    .from("conversations")
-    .update(update)
+  const query = Object.keys(update).length > 0
+    ? supabase.from("conversations").update(update)
+    : supabase.from("conversations");
+  const { data, error } = await query.select(SELECT_COLS)
     .eq("id", conversationId)
     .eq("organization_id", ctx.organization_id)
-    .select(SELECT_COLS)
     .maybeSingle();
 
   if (error) {
     throw new ApiError(500, "internal_error", undefined, ctx.requestId, error.message);
   }
   if (!data) {
-    throw new ApiError(404, "not_found", undefined, ctx.requestId, "Conversa não encontrada.");
+    throw new ApiError(
+      404,
+      "not_found",
+      undefined,
+      ctx.requestId,
+      traduzir("Conversa não encontrada.", ctx.idioma ?? "pt-BR"),
+    );
   }
 
   const conv = data as unknown as Conversation;
 
-  // MESMA REGRA DO `POST /close`, senão existem dois jeitos de fechar com efeitos
-  // opostos sobre a trava do automático. Condicionado a `last_handoff_at is null`
-  // pelo mesmo motivo de lá: fechar encerra o EPISÓDIO, não desfaz uma escalação.
-  const virouTerminal =
-    input.status !== undefined &&
-    (CONVERSATION_TERMINAL_STATUSES as readonly string[]).includes(input.status);
-  if (virouTerminal) {
-    await supabase
-      .from("conversations")
-      .update({ bot_silenced_until: null })
-      .eq("id", conversationId)
-      .eq("organization_id", ctx.organization_id)
-      .is("last_handoff_at", null);
-  }
   const a = actorAuditPayload(ctx.actor);
 
   if (input.status !== undefined) {
@@ -509,7 +519,13 @@ export async function markConversationReadHandler(
     throw new ApiError(500, "internal_error", undefined, ctx.requestId, error.message);
   }
   if (!data) {
-    throw new ApiError(404, "not_found", undefined, ctx.requestId, "Conversa não encontrada.");
+    throw new ApiError(
+      404,
+      "not_found",
+      undefined,
+      ctx.requestId,
+      traduzir("Conversa não encontrada.", ctx.idioma ?? "pt-BR"),
+    );
   }
   return data as unknown as Conversation;
 }

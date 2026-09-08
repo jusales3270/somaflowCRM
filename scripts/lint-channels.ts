@@ -142,6 +142,12 @@ const KNOWN_DEBT: { reason: string; files: string[] }[] = [
     files: [
       "app/api/v1/ai/pacing/route.ts",
       "app/api/v1/cron/contact-avatars/route.ts",
+      // (#573) Fixture do teste do reconciliador de sessão: monta a linha que
+      // `session-reconciler.ts` (dívida de TRANSPORTE, logo acima) seleciona, e
+      // a linha traz a coluna. É a ÚNICA menção do arquivo — medida linha a
+      // linha: `wahaBaseUrl`/`wahaApiKey` do mesmo teste não casam com o padrão
+      // (letra colada em letra não é fronteira). Sai quando a coluna sair.
+      "lib/agent-engine/edge/crm/session-reconciler.test.ts",
       // `components/connections/AntiBanSheet.tsx` SAIU desta lista: ele lia
       // `waha_session_name` como último degrau do NOME que o usuário vê, e por
       // isso um canal sem apelido aparecia no painel como `org_2dd5e6ea`. Agora
@@ -194,6 +200,19 @@ const KNOWN_DEBT: { reason: string; files: string[] }[] = [
       "workers/agent-worker/main.ts",
       "workers/ai-response-worker.ts",
     ],
+  },
+  {
+    reason:
+      "`lib/i18n/dicionario.ts` guarda, como CHAVE de tradução, a cópia de tela " +
+      "verbatim das rotas do grupo 'Texto VISÍVEL ao usuário' acima " +
+      "(`app/api/v1/onboarding/whatsapp/session/route.ts` e pares) — a varredura " +
+      "de cobertura do espanhol centraliza toda string visível para traduzir, " +
+      "dívida já registrada incluída. Reescrever essa cópia para tirar o nome do " +
+      "provider é a MESMA mudança de comportamento observável que a entrada " +
+      "irmã já recusa fazer nas Fases 0–2 — só que agora duplicada aqui porque " +
+      "o dicionário é espelho, não fonte. Sai junto com a Fase 3 do seam, quando " +
+      "a cópia de tela na fonte deixar de nomear o provider.",
+    files: ["lib/i18n/dicionario.ts"],
   },
 ];
 

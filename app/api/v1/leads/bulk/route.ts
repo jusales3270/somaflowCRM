@@ -1,3 +1,4 @@
+import { requireSupportWrite } from "@/lib/impersonate/support";
 /**
  * POST /api/v1/leads/bulk
  *
@@ -19,7 +20,9 @@ import { emitLeadActivity, stageChangeReason } from "@/lib/leads/activity-emitte
 import { registraFalhaDeAtividade } from "@/lib/leads/activity-write-failure";
 import { bulkLeadActionSchema, validateRequest } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
+import { observeServiceOrigin } from "@/lib/atendimento/origem";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { traduzir } from "@/lib/i18n/dicionario";
 
 export const dynamic = "force-dynamic";
 
@@ -33,12 +36,16 @@ interface LeadMovidoEmLote {
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   const requestId = randomUUID();
   const supabase = await createClient();
 
   // spec 13 §4: escrita é agent+ (viewer é read-only).
   const authz = await requireRole("agent", { requestId, resource: "crm_leads" });
   if (!authz.ok) return authz.response;
+  const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const user = authz.user;
 
   let input;
@@ -55,7 +62,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   if (input.lead_ids.length > MAX_BULK) {
-    return fail("bulk_too_large", `Máximo ${MAX_BULK} leads por bulk.`, 422, { requestId });
+    return fail("bulk_too_large", `${t("Máximo")} ${MAX_BULK} ${t("leads por bulk.")}`, 422, { requestId });
   }
 
   // G3-04: assign é reatribuição de dono em lote → piso ≥manager (spec 04 §6.5,
@@ -78,7 +85,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       if (!isServiceRoleConfigured()) {
         return fail(
           "owner_validation_unavailable",
-          "Não foi possível validar o responsável agora. Tente novamente em instantes.",
+          t("Não foi possível validar o responsável agora. Tente novamente em instantes."),
           422,
           { requestId },
         );
@@ -95,7 +102,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       if (!member || member.role === "viewer") {
         return fail(
           "invalid_owner",
-          "Responsável não é um atendente ativo desta organização.",
+          t("Responsável não é um atendente ativo desta organização."),
           422,
           { requestId },
         );
@@ -110,7 +117,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const organizationId = authz.org.orgId;
   const { data: scoped } = await supabase
     .from("crm_leads")
-    .select("id, organization_id, tags, stage_id, pipeline_id")
+    .select("id, organization_id, tags, stage_id, pipeline_id, contact_id")
     .eq("organization_id", organizationId)
     .in("id", input.lead_ids);
 
@@ -119,7 +126,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (!first) {
     return fail(
       "not_found",
-      "Nenhum lead acessível na operação.",
+      t("Nenhum lead acessível na operação."),
       404,
       { requestId },
     );
@@ -247,7 +254,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       if (!owner.ok || !owner.patch) {
         return fail(
           "validation_failed",
-          "Um lead tem um dono: informe owner_user_id OU owner_agent_id.",
+          t("Um lead tem um dono: informe owner_user_id OU owner_agent_id."),
           422,
           { requestId },
         );
@@ -275,6 +282,9 @@ export async function POST(req: NextRequest): Promise<Response> {
       for (const row of visible) {
         const current = (row.tags ?? []) as string[];
         const next = Array.from(new Set([...current.filter((t) => !remove.has(t)), ...add]));
+        const tagServiceOrigin = add.some((tag) => !current.includes(tag))
+          ? await observeServiceOrigin(createAdminClient(), organizationId, row.contact_id)
+          : null;
         const { error } = await supabase
           .from("crm_leads")
           .update({ tags: next, updated_at: nowIso })
@@ -286,12 +296,12 @@ export async function POST(req: NextRequest): Promise<Response> {
         // updateLeadHandler, so the automation engine fires for bulk tags too.
         const addedTags = add.filter((t) => !current.includes(t));
         if (addedTags.length) {
-          await supabase
+          await createAdminClient()
             .rpc("emit_event", {
               p_event_type: "lead.tag_added",
               p_entity_kind: "crm_lead",
               p_entity_id: row.id,
-              p_payload: { added_tags: addedTags, tags: next },
+              p_payload: { added_tags: addedTags, tags: next, service_origin: tagServiceOrigin },
               p_metadata: { request_id: requestId, actor_user_id: user.id },
               p_organization_id: organizationId,
             })

@@ -1,3 +1,4 @@
+import { requireSupportWrite } from "@/lib/impersonate/support";
 /**
  * `/api/v1/agenda/agendamentos` — a rota, FINA.
  *
@@ -31,6 +32,7 @@ type AgendamentoDaResposta = AgendamentoListado & { origem?: "google_sync" };
 import { ApiError } from "@/lib/api/types";
 import { requireRole } from "@/lib/auth/require-role";
 import { createClient } from "@/lib/supabase/server";
+import { traduzir } from "@/lib/i18n/dicionario";
 
 import {
   alterarAgendamentoHandler,
@@ -77,6 +79,7 @@ const marcarSchema = z.object({
   starts_at: z.string().datetime({ offset: true }),
   owner_user_id: z.string().uuid().optional(),
   contact_id: z.string().uuid().optional(),
+  conversation_id: z.string().uuid().optional(),
   title: z.string().min(1).max(200).optional(),
   notes: z.string().max(2000).optional(),
   guest_email: emailDoConvidado.optional(),
@@ -85,6 +88,9 @@ const marcarSchema = z.object({
 const alterarSchema = z
   .object({
     id: z.string().uuid(),
+    revision: z.number().int().positive().optional(),
+    outcome_message_id: z.string().uuid().optional(),
+    confirmation_next_at: z.string().datetime({offset:true}).optional(),
     /** Remarcar: o novo início. A duração vem do tipo, como na criação. */
     starts_at: z.string().datetime({ offset: true }).optional(),
     /**
@@ -97,6 +103,7 @@ const alterarSchema = z
   })
   .refine(
     (c) =>
+      c.confirmation_next_at !== undefined ||
       c.starts_at !== undefined ||
       c.status !== undefined ||
       c.notes !== undefined ||
@@ -108,6 +115,7 @@ const alterarSchema = z
 
 const cancelarSchema = z.object({
   id: z.string().uuid(),
+  revision: z.number().int().positive().optional(),
   /**
    * ⚠️ OBRIGATÓRIO, e não é burocracia: é o que a equipe lê ao ver o horário
    * vago. "Cancelado" sem motivo faz alguém ligar para o cliente perguntando o
@@ -138,6 +146,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   // `viewer`: olhar a agenda é o menor privilégio desta feature.
   const authz = await requireRole("viewer", { requestId, resource: "agenda" });
   if (!authz.ok) return authz.response;
+  const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { org: activeOrg } = authz;
 
   const url = new URL(req.url);
@@ -152,7 +161,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     limite: url.searchParams.get("limite") ?? undefined,
   });
   if (!parsed.success) {
-    return fail("validation_failed", "Consulta inválida.", 422, {
+    return fail("validation_failed", t("Consulta inválida."), 422, {
       details: parsed.error.flatten().fieldErrors as Record<string, unknown>,
       requestId,
     });
@@ -173,7 +182,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   if (!resultado.ok) {
     return fail(
       resultado.codigo === "sem_alvo" ? "agenda_listagem_sem_recorte" : "internal_error",
-      resultado.motivoParaOperador,
+      t(resultado.motivoParaOperador),
       resultado.codigo === "sem_alvo" ? 422 : 500,
       { requestId },
     );
@@ -201,7 +210,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const externos: AgendamentoDaResposta[] = [];
   if (parsed.data.de && parsed.data.ate) {
     const { data: ocupacao, error: erroOcupacao } = await supabase
-      .from("calendar_external_events")
+      .from("calendar_selected_external_events")
       .select("id, starts_at, ends_at, calendar_connections!inner(user_id)")
       .eq("organization_id", activeOrg.orgId)
       .gte("starts_at", parsed.data.de)
@@ -247,14 +256,23 @@ export async function GET(req: NextRequest): Promise<Response> {
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   return despachar(req, marcarSchema, marcarAgendamentoHandler, 201);
 }
 
 export async function PATCH(req: NextRequest): Promise<Response> {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   return despachar(req, alterarSchema, alterarAgendamentoHandler, 200);
 }
 
 export async function DELETE(req: NextRequest): Promise<Response> {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
   return despachar(req, cancelarSchema, cancelarAgendamentoHandler, 200);
 }
 
@@ -279,11 +297,12 @@ async function despachar<T>(
 
   const authz = await requireRole("agent", { requestId, resource: "agenda" });
   if (!authz.ok) return authz.response;
+  const t = (texto: string) => traduzir(texto, authz.user.idioma);
   const { org: activeOrg, user } = authz;
 
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return fail("validation_failed", "Dados inválidos.", 422, {
+    return fail("validation_failed", t("Dados inválidos."), 422, {
       details: (parsed.error as z.ZodError).flatten().fieldErrors as Record<string, unknown>,
       requestId,
     });
@@ -306,7 +325,7 @@ async function despachar<T>(
     return ok(resultado, { requestId, status });
   } catch (err) {
     if (err instanceof ApiError) {
-      return fail(err.code, err.message, err.status, {
+      return fail(err.code, t(err.message), err.status, {
         details: err.details as Record<string, unknown> | undefined,
         requestId,
       });

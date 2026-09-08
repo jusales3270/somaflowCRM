@@ -10,7 +10,7 @@ import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
 import { VersionFooter } from "@/components/shell/VersionFooter";
 import { useMarcaDaInstalacao } from "@/lib/branding/contexto";
-import { GRUPO_NO_RODAPE, NAV_GROUPS, sidebarGroups } from "@/lib/navigation/registry";
+import { GRUPO_NO_RODAPE, sidebarGroups } from "@/lib/navigation/registry";
 
 const CHAVE_GRUPOS_FECHADOS = "sidebar-grupos-fechados";
 
@@ -39,11 +39,15 @@ export function SidebarContent({
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const { user, activeOrg } = useAuth();
-  const todos = sidebarGroups(user.is_platform_admin, activeOrg?.role ?? null);
+  const todos = sidebarGroups(
+    user.is_platform_admin && !user.support,
+    activeOrg?.role ?? null,
+    activeOrg?.interface_settings,
+  );
   // Configurações sai da área que rola e vai para o rodapé fixo: medido em
   // 1280x768, ele caía fora da dobra mesmo em telas de 1080px.
   const grupos = todos.filter((g) => g.group.id !== GRUPO_NO_RODAPE);
-  const rodape = NAV_GROUPS.find((g) => g.id === GRUPO_NO_RODAPE)?.hub;
+  const rodape = todos.find((g) => g.group.id === GRUPO_NO_RODAPE)?.group.hub;
 
   /**
    * Grupo fechado é preferência POR NAVEGADOR, não por conta: começa vazio (tudo
@@ -108,8 +112,14 @@ export function SidebarContent({
 
   return (
     <>
-      <div className={cn("flex items-center border-b px-4 h-14", collapsed ? "justify-center" : "justify-start")}>
+      <div
+        className={cn(
+          "flex h-14 items-center border-b px-4",
+          collapsed ? "justify-center" : "justify-start",
+        )}
+      >
         {logo && !collapsed ? (
+<<<<<<< HEAD
           <div className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -121,10 +131,17 @@ export function SidebarContent({
               CRM
             </span>
           </div>
+=======
+          // <img> em vez de next/image de propósito: a URL vem de quem hospeda
+          // (banco ou .env), e next/image exige allowlist de domínios fechada em
+          // build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
+          // Altura fixa e largura livre porque a arte enviada tem proporção
+          // desconhecida; forçar as duas distorceria o logo de quem configurou.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logo} alt={nome} className="h-7 w-auto max-w-[10rem] object-contain" />
+>>>>>>> upstream/main
         ) : (
-          <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>
-            {nome}
-          </span>
+          <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>{nome}</span>
         )}
         {collapsed && (
           <span aria-hidden className="text-lg font-bold text-primary">
@@ -165,6 +182,21 @@ export function SidebarContent({
         menu. Quem pressionar é um grupo SEM hub — Atendimento (4), Canais (3)
         ou Análise (3). Quando um deles passar de quatro, a resposta é a mesma:
         cria-se o hub, não se raspa densidade.
+
+        ✅ ANÁLISE FOI A SEGUINTE, e a regra valeu igual. Atividades (PR #583)
+        levou o grupo a cinco telas e a dobra estourou de novo — medido em
+        1280×900, logado como admin: `scrollHeight` 776 contra 763 de altura
+        visível, 13px de excesso, com o link "Audit Log" 13px abaixo da caixa de
+        conteúdo da nav. O conserto foi `/app/analise`, o hub do grupo: Evolução
+        da IA e Audit Log saíram do menu para dentro dele, e NENHUM valor deste
+        arquivo mudou por causa disso. Sobrou 19px de folga — a mesma que havia
+        antes de Atividades chegar.
+
+        Ficam sem hub Atendimento e Canais (4 e 2 destinos quando isto foi
+        medido) — em qualquer um deles, o quinto destino é que cria o hub, nunca
+        mais densidade raspada. A conta é fechada e vale conferir antes de abrir
+        o PR: cada linha custa 32px (28px de altura + 4px de `space-y-1`), e
+        trocar N destinos do menu por um único link de hub devolve (N-1)×32px.
       */}
       <nav className="flex-1 space-y-2 overflow-y-auto p-2" aria-label={t("Navegação principal")}>
         {grupos.map(({ group, items }) => {
@@ -200,57 +232,61 @@ export function SidebarContent({
                 </h2>
               )}
               {aberto && (
-              <ul aria-labelledby={collapsed ? undefined : tituloId} aria-label={collapsed ? t(group.label) : undefined} className="space-y-1">
-                {items.map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-                  const Icon = item.icon;
-                  return (
-                    <li key={item.href}>
+                <ul
+                  aria-labelledby={collapsed ? undefined : tituloId}
+                  aria-label={collapsed ? t(group.label) : undefined}
+                  className="space-y-1"
+                >
+                  {items.map((item) => {
+                    const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                    const Icon = item.icon;
+                    return (
+                      <li key={item.href}>
+                        <Link
+                          href={item.href}
+                          title={collapsed ? t(item.label) : undefined}
+                          aria-current={isActive ? "page" : undefined}
+                          onClick={onNavigate}
+                          className={cn(
+                            "relative flex items-center gap-3 rounded-md px-3 py-1 text-sm transition-colors",
+                            isActive
+                              ? "bg-accent text-accent-foreground dark:text-white"
+                              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                            collapsed && "justify-center px-2",
+                          )}
+                        >
+                          <Icon size={18} weight={isActive ? "fill" : "regular"} aria-hidden />
+                          {!collapsed && <span className="truncate">{t(item.label)}</span>}
+                          {item.healthDot && (
+                            <ConnectionHealthDot
+                              className={cn(collapsed ? "absolute top-1.5 right-1.5" : "ml-auto")}
+                            />
+                          )}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                  {group.hub && (
+                    <li>
                       <Link
-                        href={item.href}
-                        title={collapsed ? t(item.label) : undefined}
-                        aria-current={isActive ? "page" : undefined}
+                        href={group.hub.href}
+                        title={collapsed ? t(group.hub.label) : undefined}
+                        aria-current={pathname === group.hub.href ? "page" : undefined}
                         onClick={onNavigate}
                         className={cn(
-                          "relative flex items-center gap-3 rounded-md px-3 py-1 text-sm transition-colors",
-                          isActive
+                          "flex items-center gap-3 rounded-md px-3 py-1 text-sm transition-colors",
+                          pathname === group.hub.href
                             ? "bg-accent text-accent-foreground dark:text-white"
                             : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
                           collapsed && "justify-center px-2",
                         )}
                       >
-                        <Icon size={18} weight={isActive ? "fill" : "regular"} aria-hidden />
-                        {!collapsed && <span className="truncate">{t(item.label)}</span>}
-                        {item.healthDot && (
-                          <ConnectionHealthDot
-                            className={cn(collapsed ? "absolute right-1.5 top-1.5" : "ml-auto")}
-                          />
-                        )}
+                        <ArrowRight size={18} aria-hidden />
+                        {!collapsed && <span className="truncate">{t(group.hub.label)}</span>}
                       </Link>
                     </li>
-                  );
-                })}
-                {group.hub && (
-                  <li>
-                    <Link
-                      href={group.hub.href}
-                      title={collapsed ? t(group.hub.label) : undefined}
-                      aria-current={pathname === group.hub.href ? "page" : undefined}
-                      onClick={onNavigate}
-                      className={cn(
-                        "flex items-center gap-3 rounded-md px-3 py-1 text-sm transition-colors",
-                        pathname === group.hub.href
-                          ? "bg-accent text-accent-foreground dark:text-white"
-                          : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-                        collapsed && "justify-center px-2",
-                      )}
-                    >
-                      <ArrowRight size={18} aria-hidden />
-                      {!collapsed && <span className="truncate">{t(group.hub.label)}</span>}
-                    </Link>
-                  </li>
-                )}
-              </ul>
+                  )}
+                </ul>
               )}
             </div>
           );
@@ -287,7 +323,11 @@ export function SidebarContent({
             )}
             aria-label={collapsed ? t("Expandir sidebar") : t("Recolher sidebar")}
           >
-            {collapsed ? <CaretDoubleRight size={14} aria-hidden /> : <CaretDoubleLeft size={14} aria-hidden />}
+            {collapsed ? (
+              <CaretDoubleRight size={14} aria-hidden />
+            ) : (
+              <CaretDoubleLeft size={14} aria-hidden />
+            )}
             {!collapsed && <span>{t("Recolher")}</span>}
           </button>
         )}
