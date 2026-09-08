@@ -37,6 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // EPIC-02: gate /app/* on completed onboarding.
   // EPIC-11: gate /app/* on org not being suspended (S-11.08).
+  if (activeOrg) {
     try {
       const admin = createAdminClient();
       const { data: orgRow } = await admin
