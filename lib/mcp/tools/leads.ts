@@ -26,6 +26,17 @@ import { resolveUserNames } from "./_users";
 import type { McpContext, McpToolDefinition } from "../types";
 
 /**
+ * A unidade de `value_cents` DITA AO MODELO. O negócio guarda o valor × 100 em
+ * QUALQUER moeda — inclusive guarani, que não tem centavo (ver
+ * `formatValorDoNegocio` em `lib/money.ts`) —, e o catálogo não: `preco_cents`
+ * vem em unidades da moeda. Sem esta linha a conversão dependia só do prompt de
+ * cada organização, e um prompt que esquecesse gravava o pedido cem vezes menor.
+ */
+const VALOR_DO_NEGOCIO =
+  "valor do negócio × 100, em QUALQUER moeda (também guarani): R$ 249,90 → 24990; ₲125.000 → 12500000. " +
+  "O preço do catálogo (preco_cents) NÃO segue esta régua em moeda sem centavos: multiplique por 100.";
+
+/**
  * Enriquece rows de lead com os campos de governança aditivos (G6-03):
  * `owner_user_name` (só o nome — LGPD) e `stage` ({ id, name }, o label legível
  * que o get_lead_context compõe). owner_user_id, stage_id, status e tags[] já
@@ -76,6 +87,14 @@ const listInputShape = {
   stage_id: z.string().uuid().optional(),
   status: z.enum(["open", "won", "lost"]).optional(),
   owner_user_id: z.string().uuid().optional(),
+  /** `lost_reason` exato do negócio perdido (issue #1537). */
+  lost_reason: z.string().min(1).max(500).optional(),
+  /**
+   * Categoria do motivo de perda (issue #1537) — resolve pela mesma régua do
+   * relatório "Perdas" (`motivosDaCategoria`). Recomendado junto com
+   * `pipeline_id`: sem escopo de funil a lista é a união dos funis da org.
+   */
+  lost_reason_category: z.string().min(1).max(40).optional(),
   limit: z.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),
 };
@@ -102,6 +121,8 @@ export const crmListLeads: McpToolDefinition<typeof listInputShape> = {
         stage_id: input.stage_id,
         status: input.status,
         owner_user_id: input.owner_user_id,
+        lost_reason: input.lost_reason,
+        lost_reason_category: input.lost_reason_category,
         limit: input.limit,
         cursor: input.cursor,
       },
@@ -160,7 +181,7 @@ const createInputShape = {
   title: z.string().min(2).max(200),
   description: z.string().max(2000).optional(),
   contact_id: z.string().uuid().optional(),
-  value_cents: z.number().int().nonnegative().optional(),
+  value_cents: z.number().int().nonnegative().optional().describe(VALOR_DO_NEGOCIO),
   currency: z.string().length(3).optional(),
   owner_user_id: z.string().uuid().optional(),
   /** 0070: o agente pode nascer dono do negócio que ele mesmo abriu. */
@@ -220,7 +241,7 @@ const updateInputShape = {
   title: z.string().min(2).max(200).optional(),
   description: z.string().max(2000).optional(),
   contact_id: z.string().uuid().optional(),
-  value_cents: z.number().int().nonnegative().optional(),
+  value_cents: z.number().int().nonnegative().optional().describe(VALOR_DO_NEGOCIO),
   currency: z.string().length(3).optional(),
   owner_user_id: z.string().uuid().optional(),
   /** 0070: transferir o negócio para (ou de) um agente — passa pelo mesmo helper. */
