@@ -3,6 +3,7 @@ import { useT } from "@/hooks/i18n/useT";
 import {
   forwardRef,
   useImperativeHandle,
+  useEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -24,14 +25,46 @@ import { useSendMessage } from "@/hooks/inbox/useSendMessage";
 import { useUploadMedia } from "@/hooks/inbox/useUploadMedia";
 import { imagemDoClipboard } from "@/lib/inbox/clipboard-image";
 import { interpolateTemplate } from "@/lib/inbox/template-vars";
+import {
+  type AvisoDeRascunho,
+  type MotivoDeRecusa,
+} from "@/lib/inbox/rascunho-sugerido";
+import { apiClient } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 export interface ComposerHandle {
   focus: () => void;
 }
 
+/**
+ * O que a tela diz quando o rascunho NÃO vale mais (issue #1611: "a conversa
+ * abre sem texto e com aviso").
+ *
+ * Os quatro motivos são frases separadas de propósito: o atendente precisa
+ * saber se o texto expirou, se alguém já usou ou se o link era de outra
+ * conversa — e a única coisa que os quatro têm em comum (a conversa abriu sem
+ * ele) é justamente o que ele não deve presumir sozinho.
+ */
+function avisoDeRascunhoIndisponivel(motivo: MotivoDeRecusa, t: (texto: string) => string): string {
+  switch (motivo) {
+    case "outra_conversa":
+      return t("O texto sugerido pertence a outra conversa. A conversa abriu sem ele.");
+    case "usado":
+      return t("O texto sugerido já foi usado. A conversa abriu sem ele.");
+    case "expirado":
+      return t("O texto sugerido expirou. A conversa abriu sem ele.");
+    case "nao_encontrado":
+    default:
+      return t("O texto sugerido não foi encontrado. A conversa abriu sem ele.");
+  }
+}
+
 interface Props {
   conversationId: string;
+  initialDraft?: string;
+  initialMode?: "reply" | "note";
+  onDraftChange?: (text: string, mode: "reply" | "note") => void;
+  active?: boolean;
   disabled?: boolean;
   /** Set true when contact is blocked / anonymized — explanation shown. */
   blockedReason?: string | null;
@@ -58,11 +91,21 @@ interface Props {
   contactName?: string | null;
   /** Contato da conversa — excluído do seletor de cartão compartilhado. */
   currentContactId?: string | null;
+  /**
+   * Texto sugerido por integração (issue #1611). O texto em si já vem em
+   * `initialDraft` (é ele que preenche o campo); aqui vêm o AVISO de origem e o
+   * `draft_id` que o consumo usa depois do clique.
+   */
+  rascunho?: AvisoDeRascunho | null;
 }
 
 export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   {
     conversationId,
+    initialDraft = "",
+    initialMode = "reply",
+    active = true,
+    onDraftChange,
     disabled,
     blockedReason,
     janelaFechada,
@@ -70,15 +113,22 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     currentContactId,
     respondendo,
     onCancelarResposta,
+    rascunho = null,
   },
   ref,
 ) {
   const t = useT();
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialDraft);
+  // O aviso some no primeiro ENVIO: depois do clique o rascunho foi usado, e
+  // deixar a faixa prometendo texto que já saiu seria mentira de tela.
+  const [rascunhoUsado, setRascunhoUsado] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [contactPickerOpen, setContactPickerOpen] = useState(false);
   const [menuDismissed, setMenuDismissed] = useState(false);
-  const [mode, setMode] = useState<"reply" | "note">("reply");
+  const [mode, setMode] = useState<"reply" | "note">(initialMode);
+  useEffect(() => {
+    onDraftChange?.(text, mode);
+  }, [text, mode, onDraftChange]);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const send = useSendMessage();
   const upload = useUploadMedia();
@@ -114,7 +164,8 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     requestAnimationFrame(() => autoresize());
 
     const restoreOnError = () => {
-      setText(body);
+      // Se a pessoa já começou a próxima resposta, preserve os dois textos.
+      setText((current) => (current ? `${body}\n${current}` : body));
       requestAnimationFrame(() => autoresize());
     };
 
@@ -131,10 +182,10 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       },
       {
         onSuccess: () => {
-          setText("");
           // A citação vale para UMA mensagem. Mantê-la depois do envio faria a
           // próxima frase sair citando algo que o atendente já respondeu.
           onCancelarResposta?.();
+          consumirRascunhoEnviado();
           requestAnimationFrame(() => autoresize());
         },
         // Do upstream, e fica: sem isto o texto some quando o envio falha, e
@@ -142,6 +193,27 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
         onError: restoreOnError,
       },
     );
+  }
+
+  /**
+   * Marca o rascunho como usado — só depois do ENVIO humano dar certo.
+   *
+   * Fire-and-forget de propósito: o texto já saiu, e a falha do consumo não pode
+   * virar erro de envio. O aviso some na mesma hora (estado local), porque a
+   * proposta é de uso único: repetir a dica depois do clique seria encher a tela
+   * de alguém que já leu.
+   */
+  function consumirRascunhoEnviado(): void {
+    const leitura = rascunho?.leitura;
+    if (rascunhoUsado || leitura?.estado !== "sugerido") return;
+    setRascunhoUsado(true);
+    void apiClient
+      .post(`/api/v1/conversations/${conversationId}/drafts/consume`, {
+        draft_id: leitura.draftId,
+      })
+      .catch(() => {
+        /* silêncio: ver docstring */
+      });
   }
 
   function applyTemplate(t: MessageTemplate) {
@@ -214,6 +286,28 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           onPick={applyTemplate}
           onClose={() => setMenuDismissed(true)}
         />
+        {/* O AVISO DO RASCUNHO SUGERIDO (issue #1611) — acima dos modos, sempre
+            que a resposta está liberada. Nada aqui envia: a faixa só diz de onde
+            veio o texto que já está no campo (e, quando o rascunho não vale
+            mais, por que o campo está vazio). */}
+        {rascunho && !rascunhoUsado && mode === "reply" && (
+          <div
+            data-testid="aviso-rascunho"
+            className="mb-1.5 flex items-start gap-2 rounded-md border-l-2 border-primary bg-muted/60 px-2 py-1.5 text-xs"
+          >
+            <p className="min-w-0 flex-1 text-muted-foreground">
+              {rascunho.leitura.estado === "sugerido" ? (
+                <>
+                  {t("Texto sugerido por")}{" "}
+                  <span className="font-medium text-foreground">{rascunho.leitura.origem}</span>.{" "}
+                  {t("Revise antes de enviar.")}
+                </>
+              ) : (
+                avisoDeRascunhoIndisponivel(rascunho.leitura.motivo, t)
+              )}
+            </p>
+          </div>
+        )}
         <div className="mb-1.5 flex gap-1">
           <button
             type="button"
@@ -347,7 +441,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               <PaperPlaneTilt size={16} weight="fill" aria-hidden />
             </Button>
           ) : (
-            <AudioRecorder conversationId={conversationId} disabled={respostaBarrada} />
+            active && <AudioRecorder conversationId={conversationId} disabled={respostaBarrada} />
           )}
         </div>
       </div>

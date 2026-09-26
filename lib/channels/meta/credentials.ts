@@ -39,6 +39,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "../archived";
+import { graphVersion } from "@/lib/graph-version";
 import { decryptWebhookSecret } from "@/lib/webhooks/secrets";
 
 export interface MetaCredentials {
@@ -59,9 +60,13 @@ export interface MetaCredsLookup {
   phoneNumberId: string;
 }
 
-/** Versão da Graph API. Explícita de propósito: bump é decisão, não deriva. */
-function graphVersion(): string {
-  return process.env.META_GRAPH_VERSION ?? "v22.0";
+/**
+ * Base da Graph API desta instalação — o "endpoint" que a tela de conexão mostra
+ * para o operador reaproveitar em outro sistema. Não é segredo (é o mesmo host
+ * público para todo mundo); o segredo é o token, que nunca sai daqui.
+ */
+export function metaGraphBase(): string {
+  return `https://graph.facebook.com/${graphVersion()}`;
 }
 
 /**

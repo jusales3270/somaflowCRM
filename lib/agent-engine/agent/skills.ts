@@ -29,6 +29,8 @@ import path from 'node:path';
 
 import { z } from 'zod';
 
+import { scrubMessage } from '@/lib/sentry/scrub';
+
 import type { Queryable } from '../queue/queue';
 import { countPayloadTokens, type LeadContextMessage } from '../edge/crm/get-lead-context';
 import type { Logger } from '../obs/logger';
@@ -295,10 +297,35 @@ export function latestInboundSignal(messages: readonly LeadContextMessage[]): st
 }
 
 /**
+ * SINAL do matcher considerando o CONTEXTO recente, não só a última mensagem.
+ *
+ * Medido ao vivo (2026-09-21): depois de o agente mostrar "CB 300" e o cliente
+ * responder "A 2025" (a escolha), a skill `catalogo-apresentacao` NÃO era
+ * acionada — "A 2025" não tem palavra-chave —, o modelo não consultava o
+ * catálogo e as FOTOS da moto escolhida não eram enviadas. Concatenar as últimas
+ * mensagens INBOUND mantém a skill viva enquanto o assunto continua (a conversa
+ * está claramente sobre motos). Só inbound: é o que o CLIENTE disse.
+ */
+export function recentInboundSignal(
+  messages: readonly LeadContextMessage[],
+  janela = 6,
+): string {
+  const inbounds: string[] = [];
+  for (let i = messages.length - 1; i >= 0 && inbounds.length < janela; i -= 1) {
+    const m = messages[i];
+    if (m !== undefined && m.direction === 'inbound' && m.body.trim() !== '') {
+      inbounds.unshift(m.body);
+    }
+  }
+  return inbounds.join(' \n ');
+}
+
+/**
  * Grava os near-misses como candidatos ao golden set (blueprint 3.3) — fs em RUNTIME
  * (mkdir recursivo + writeFile), NÃO a tool Write, então o freeze do golden não se aplica
  * a este caminho executado. O arquivo é para CURADORIA HUMANA: carrega o sinal (texto do
- * lead), então NUNCA é logado (regra dura 8) — só a CONTAGEM e os nomes das skills vão a log.
+ * lead, redigido por `scrubMessage` antes de ir a disco), então NUNCA é logado (regra dura 8)
+ * — só a CONTAGEM e os nomes das skills vão a log.
  * Um arquivo por (skill, job): retry re-grava o mesmo candidato, não acumula duplicata.
  */
 export async function recordSkillMissCandidates(
@@ -322,8 +349,12 @@ export async function recordSkillMissCandidates(
       job_id: trace.jobId,
       expected_skill: c.skill,
       reason: c.reason,
-      // sinal do turno (texto do lead — PII): fica no ARQUIVO de curadoria, jamais em log.
-      signal: trace.signal,
+      // sinal do turno (texto do lead — PII): fica no ARQUIVO de curadoria, jamais em log, e
+      // passa pelo redator antes de tocar o disco. Um CPF, telefone ou e-mail dentro deste
+      // arquivo sobrevive à cascata de anonimização, que alcança o banco e não o disco do
+      // contêiner. O que o redator NÃO tira é o corpo da mensagem — o candidato ir para uma
+      // tabela, com retenção e cascata, é o conserto inteiro.
+      signal: scrubMessage(trace.signal),
     };
     const file = path.join(dir, `skill-miss_${c.skill}_${trace.jobId}.json`);
     await writeFile(file, `${JSON.stringify(record, null, 2)}\n`, 'utf8');

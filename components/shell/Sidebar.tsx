@@ -9,6 +9,8 @@ import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
 import { VersionFooter } from "@/components/shell/VersionFooter";
+import { LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
+import { marcaEhADoProduto } from "@/lib/branding";
 import { useMarcaDaInstalacao } from "@/lib/branding/contexto";
 import { GRUPO_NO_RODAPE, sidebarGroups } from "@/lib/navigation/registry";
 
@@ -43,6 +45,7 @@ export function SidebarContent({
     user.is_platform_admin && !user.support,
     activeOrg?.role ?? null,
     activeOrg?.interface_settings,
+    activeOrg?.modulos_ligados ?? [],
   );
   // Configurações sai da área que rola e vai para o rodapé fixo: medido em
   // 1280x768, ele caía fora da dobra mesmo em telas de 1080px.
@@ -109,6 +112,15 @@ export function SidebarContent({
    * descer para ele — que é o contrário do que a precedência por campo promete.
    */
   const logo = activeOrg?.marca?.logoUrl || brand.logoUrl;
+  const logoEscuro =
+    activeOrg?.marca?.logoDarkUrl !== undefined
+      ? activeOrg.marca.logoDarkUrl
+      : activeOrg?.marca?.logoUrl
+        ? null
+        : brand.logoDarkUrl;
+  // Só quando NINGUÉM — nem a instalação, nem a organização — pôs marca própria:
+  // é a condição de `lib/branding.ts`, avaliada sobre o que a barra vai mostrar.
+  const marcaDoProduto = marcaEhADoProduto({ name: nome, logoUrl: logo ?? null });
 
   return (
     <>
@@ -118,22 +130,52 @@ export function SidebarContent({
           collapsed ? "justify-center" : "justify-start",
         )}
       >
-        {logo && !collapsed ? (
+        {(logo || logoEscuro) && !collapsed ? (
+          // SomaFlow: logo + "CRM" ao lado, sem o fundo branco de contraste do
+          // upstream no escuro (o "CRM" em zinc-200 ficaria ilegível sobre ele).
           <div className="flex items-center gap-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={logo}
-              alt={nome}
-              className="h-[36px] w-auto max-w-[9.5rem] object-contain"
-            />
+            {/* <img> em vez de next/image de propósito: a URL vem de quem hospeda
+              (banco ou .env), e next/image exige allowlist de domínios fechada em
+              build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
+              Altura fixa e largura livre porque a arte enviada tem proporção
+              desconhecida; forçar as duas distorceria o logo de quem configurou. */}
+            {logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logo}
+                alt={nome}
+                className={cn(
+                  "h-[36px] w-auto max-w-[9.5rem] object-contain",
+                  logoEscuro && "dark:hidden",
+                )}
+              />
+            ) : (
+              <span className="dark:hidden">{nome}</span>
+            )}
+            {logoEscuro ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoEscuro}
+                alt={nome}
+                className="hidden h-[36px] w-auto max-w-[9.5rem] object-contain dark:block"
+              />
+            ) : null}
             <span className="text-[21px] font-normal tracking-normal leading-none text-zinc-700 dark:text-zinc-200 select-none translate-y-[4px]">
               CRM
             </span>
           </div>
+        ) : marcaDoProduto ? (
+          // O desenho do produto, inline (ver `components/branding/MarcaDoProduto.tsx`):
+          // logotipo com a barra aberta, só o símbolo com ela recolhida.
+          collapsed ? (
+            <SimboloDoProduto nome={nome} className="h-8 w-8" />
+          ) : (
+            <LogotipoDoProduto nome={nome} className="h-8 w-auto" />
+          )
         ) : (
           <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>{nome}</span>
         )}
-        {collapsed && (
+        {collapsed && !marcaDoProduto && (
           <span aria-hidden className="text-lg font-bold text-primary">
             {/* Spread e não `[0]`: nome começando com emoji ou acento composto
                 quebraria no meio do code point. Mesma regra de `resolveBranding`

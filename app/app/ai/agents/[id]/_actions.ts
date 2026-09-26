@@ -137,8 +137,12 @@ export async function saveAgentDraftAction(
   // conferido depois, uma ordem inválida devolveria erro com a versão já
   // gravada; se fosse GRAVADO antes, um escopo inválido devolveria erro com o
   // nome já trocado — a lista mostrando o novo e o editor o velho.
-  // `agentMcpPatchSchema` é a régua que a rota REST já usa: uma quarta régua
-  // para o mesmo campo é o defeito seguinte.
+  // `agentMcpPatchSchema` NÃO é a régua da rota REST (essa é `agentPatchSchema`,
+  // em lib/ai/guardrails-schema.ts — mais estrita em name/description). É a régua
+  // do cadastro do editor MCP, a mesma do formulário (AgentForm.tsx) e alinhada de
+  // propósito com `agentMcpCreateSchema`, para criar e editar terem a mesma régua.
+  // A afirmação de equivalência com o REST era falsa e ficou parada aqui até o
+  // achado #532 medir a divergência.
   const cadastroParsed =
     cadastro === undefined ? null : agentMcpPatchSchema.safeParse(cadastro);
   if (cadastroParsed && !cadastroParsed.success) {
@@ -414,6 +418,13 @@ export async function publishAgentAction(
     .insert({
       organization_id: activeOrg.orgId,
       event_type: "ai_agent.published",
+      // `entity_kind` é NOT NULL sem default (`baseline.sql`): sem esta linha o
+      // insert viola a constraint e o evento de publicação NUNCA é gravado. E o
+      // insert é `void` + `.then()`, então a violação cai num `console.error`
+      // que ninguém lê — o Sistema Vivo perde o registro em silêncio. Visto no
+      // log do CI de hoje: `null value in column "entity_kind" ... violates
+      // not-null constraint`.
+      entity_kind: "ai_agent",
       payload: {
         agent_id: result.agent_id,
         version_id: result.version_id,
@@ -506,7 +517,9 @@ export async function revertToVersionAction(
     credential_id: string;
     tool_ids: string[];
     trigger_config: Record<string, unknown> | null;
-    channel_session_id: string;
+    // Nulo desde a 0239: a versão de origem pode ser um rascunho de quem ainda
+    // não conectou o WhatsApp, e duplicá-la copia o "sem número" adiante.
+    channel_session_id: string | null;
     max_steps: number;
     token_budget: number;
     cost_budget_cents: number;
@@ -614,6 +627,13 @@ export async function revertToVersionAction(
     .insert({
       organization_id: activeOrg.orgId,
       event_type: "ai_agent.published",
+      // `entity_kind` é NOT NULL sem default (`baseline.sql`): sem esta linha o
+      // insert viola a constraint e o evento de publicação NUNCA é gravado. E o
+      // insert é `void` + `.then()`, então a violação cai num `console.error`
+      // que ninguém lê — o Sistema Vivo perde o registro em silêncio. Visto no
+      // log do CI de hoje: `null value in column "entity_kind" ... violates
+      // not-null constraint`.
+      entity_kind: "ai_agent",
       payload: {
         agent_id: result.agent_id,
         version_id: result.version_id,

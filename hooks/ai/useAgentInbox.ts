@@ -45,3 +45,21 @@ export function useUpdateInboxItem() {
     onSettled: () => qc.invalidateQueries({ queryKey: ["agent-inbox"] }),
   });
 }
+
+/**
+ * Resolve TODOS os avisos abertos da organização de uma vez.
+ *
+ * Não recebe ids: quem decide o conjunto é o servidor, a partir da org do
+ * cookie. Mandar a lista da tela seria pior — a tela carrega no máximo 50, e
+ * "marcar todos" com 144 abertos precisa alcançar os 144.
+ */
+export function useResolveAllInboxItems() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.post<{ data: { resolved_count: number } }>(
+      "/api/v1/ai/inbox/resolve-all",
+      {},
+    ),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["agent-inbox"] }),
+  });
+}

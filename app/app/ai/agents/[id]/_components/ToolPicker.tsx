@@ -53,6 +53,9 @@ export interface McpToolMeta extends CapacidadeSelecionavel {
   o_que_toca: string;
   risco: ToolRisk;
   pacotes: ReadonlyArray<ToolBundle>;
+  /** `false` = capacidade do harness: mostra, explica e não deixa marcar. */
+  marcavel: boolean;
+  motivo_nao_marcavel: string | null;
 }
 
 interface Props {
@@ -114,7 +117,7 @@ function FichaCapacidade({
         className="mt-1 h-4 w-4 shrink-0 rounded-md border-border accent-primary"
         checked={marcada}
         onChange={onToggle}
-        disabled={disabled || bloqueada}
+        disabled={disabled || (bloqueada && !marcada)}
         aria-label={t(capacidade.rotulo)}
       />
       <span className="flex-1 space-y-1">
@@ -124,6 +127,16 @@ function FichaCapacidade({
           <span className="text-xs text-muted-foreground">· {t(capacidade.o_que_toca)}</span>
         </span>
         <span className="block text-xs text-muted-foreground">{t(capacidade.explicacao)}</span>
+        {capacidade.motivo_nao_marcavel ? (
+          // O motivo do descarte, NA TELA. Antes disto o dono marcava e o engine
+          // jogava fora; o aviso existia só no log do worker, que ninguém lê.
+          <span
+            data-testid={`motivo-nao-marcavel-${capacidade.name}`}
+            className="block text-xs text-sky-700 dark:text-sky-400"
+          >
+            {t(capacidade.motivo_nao_marcavel)}
+          </span>
+        ) : null}
         {mostrarNomeTecnico ? (
           <code className="block font-mono text-[11px] text-muted-foreground">
             {capacidade.name}
@@ -134,10 +147,38 @@ function FichaCapacidade({
   );
 }
 
+/**
+ * A recusa por teto. `role="alert"` faz leitor de tela anunciar na hora; o
+ * `scrollIntoView` garante que quem enxerga também veja — no topo ou dentro
+ * do cartão, o aviso só serve se estiver na tela no momento do clique.
+ */
+function AvisoTeto({ texto }: { texto: string }) {
+  const ref = React.useRef<HTMLParagraphElement>(null);
+  React.useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [texto]);
+  return (
+    <p
+      ref={ref}
+      role="alert"
+      data-testid="aviso-teto"
+      className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+    >
+      {texto}
+    </p>
+  );
+}
+
 export function ToolPicker({ value, onChange, disabled }: Props) {
   const t = useT();
   const [avancado, setAvancado] = React.useState(false);
-  const [recusa, setRecusa] = React.useState<string | null>(null);
+  // `pacote` diz ONDE a recusa aconteceu. O aviso nascia só no topo do seletor,
+  // e quem clicava num pacote lá embaixo (com a tela rolada) via o interruptor
+  // não mudar e nada mais — o aviso ficava fora da tela e o clique parecia
+  // quebrado. Recusa de pacote aparece dentro do cartão do pacote clicado.
+  const [recusa, setRecusa] = React.useState<{ texto: string; pacote: ToolBundle | null } | null>(
+    null,
+  );
 
   const query = useQuery({
     queryKey: ["mcp", "tools"],
@@ -172,9 +213,14 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
    * Medido na tela: com 3 ligadas, "Atender" (17 automáticas + 1 crítica)
    * chegava a 20, passava, e a crítica nascia desabilitada.
    */
-  function aplicar(proximo: string[], motivoSeRecusar: string, vagasExigidas = proximo.length) {
+  function aplicar(
+    proximo: string[],
+    motivoSeRecusar: string,
+    vagasExigidas = proximo.length,
+    pacote: ToolBundle | null = null,
+  ) {
     if (vagasExigidas > TETO_TOOLS_POR_AGENTE) {
-      setRecusa(motivoSeRecusar);
+      setRecusa({ texto: motivoSeRecusar, pacote });
       return;
     }
     setRecusa(null);
@@ -197,6 +243,7 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
           excedente === 1 ? t("vaga") : t("vagas")
         }${t("). Desligue um pacote que você usa menos antes.")}`,
         exigidas,
+        pacote,
       );
     } else {
       setRecusa(null);
@@ -246,14 +293,7 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
         </p>
       </div>
 
-      {recusa ? (
-        <p
-          data-testid="aviso-teto"
-          className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-        >
-          {recusa}
-        </p>
-      ) : null}
+      {recusa && recusa.pacote === null ? <AvisoTeto texto={recusa.texto} /> : null}
 
       {/* Caminho padrão: pacotes por jornada. */}
       <div className="grid gap-3">
@@ -281,7 +321,7 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
                   checked={estado === "ligado"}
                   onCheckedChange={(v) => alternarPacote(pacote.id, v)}
                   disabled={disabled || vazio}
-                  aria-label={pacote.rotulo}
+                  aria-label={t(pacote.rotulo)}
                 />
                 <div className="flex-1 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -289,7 +329,7 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
                       htmlFor={`pacote-${pacote.id}`}
                       className="cursor-pointer text-sm font-medium"
                     >
-                      {pacote.rotulo}
+                      {t(pacote.rotulo)}
                     </label>
                     {estado === "parcial" ? (
                       <Badge variant="outline" className="text-[11px]">
@@ -297,12 +337,14 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
                       </Badge>
                     ) : null}
                   </div>
-                  <p className="text-xs text-muted-foreground">{pacote.explicacao}</p>
+                  <p className="text-xs text-muted-foreground">{t(pacote.explicacao)}</p>
                   <p className="text-xs text-muted-foreground" data-testid={`contagem-${pacote.id}`}>
                     {textoDaContagem(total, ligadas, t)}
                   </p>
                 </div>
               </div>
+
+              {recusa && recusa.pacote === pacote.id ? <AvisoTeto texto={recusa.texto} /> : null}
 
               {/* Crítico nunca entra por pacote: exige o dedo do humano. */}
               {criticas.length > 0 ? (
@@ -322,7 +364,7 @@ export function ToolPicker({ value, onChange, disabled }: Props) {
                         key={name}
                         capacidade={capacidade}
                         marcada={marcada}
-                        bloqueada={!marcada && cheio}
+                        bloqueada={!marcada && (cheio || !capacidade.marcavel)}
                         onToggle={() => alternarCapacidade(name)}
                         disabled={disabled}
                       />

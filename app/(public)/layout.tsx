@@ -23,6 +23,11 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  * ou um logo mal gravados não podem derrubar a única tela por onde se entra para
  * corrigi-los.
  *
+ * Sem logo configurado E com o nome padrão, a fachada mostra o logotipo do
+ * PRODUTO (`components/branding/MarcaDoProduto.tsx`) — inline, sem `<img>`,
+ * para que `tests/e2e/marca-logo.spec.ts` continue medindo "a fachada está sem
+ * `<img>`" como "sem logo do revendedor".
+ *
  * O NOME continua saindo de `branding()` dentro de cada página — não é descuido,
  * está medido em `tests/e2e/icone-da-marca.spec.ts:64-77`: aquela spec cruza duas
  * resoluções independentes (o título da aba, que lê o banco, contra o texto sob
