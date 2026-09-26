@@ -10,10 +10,13 @@ interface PublicAuthShellProps {
     nome: string;
     logoUrl: string | null;
   };
+  /** O logo pronto (com o chip do tema escuro), montado em `app/(public)/layout.tsx`. */
+  logoGrande: React.ReactNode;
+  logoPequeno: React.ReactNode;
   children: React.ReactNode;
 }
 
-export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
+export function PublicAuthShell({ marca, logoGrande, logoPequeno, children }: PublicAuthShellProps) {
   const t = useT();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -57,15 +60,7 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
 
           {/* Logo com animação pulsante entre as ondas */}
           <div className="somaflow-pulse-logo flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
-            {marca.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                data-testid="logo-da-fachada"
-                src={marca.logoUrl}
-                alt={marca.nome}
-                className="h-[85px] md:h-[110px] w-auto max-w-[22rem] object-contain"
-              />
-            ) : (
+            {logoGrande ?? (
               <span
                 data-testid="logo-da-fachada"
                 className="text-4xl font-bold tracking-tight text-white drop-shadow-[0_10px_20px_rgba(0,162,245,0.5)]"
@@ -105,17 +100,7 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
         </button>
       )}
 
-      {marca.logoUrl && (
-        <div className="flex justify-center mb-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            data-testid="logo-da-fachada"
-            src={marca.logoUrl}
-            alt={marca.nome}
-            className="h-[67px] w-auto max-w-[20rem] object-contain"
-          />
-        </div>
-      )}
+      {logoPequeno && <div className="flex justify-center mb-2">{logoPequeno}</div>}
       {children}
     </div>
   );

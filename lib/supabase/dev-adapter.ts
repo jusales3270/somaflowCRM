@@ -6,6 +6,8 @@
  * dados representativos para o SomaFlow CRM.
  */
 
+import { PROVIDERS_DE_MENSAGEM } from "@/lib/channels/capabilities";
+
 export function isDevSupabaseFallbackActive(): boolean {
   if (process.env.NODE_ENV !== "development") return false;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -15,7 +17,7 @@ export function isDevSupabaseFallbackActive(): boolean {
 const ORG_ID = "00000000-0000-4000-8000-000000000002";
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 
-const DEMO_DATA: Record<string, any[]> = {
+const DEMO_DATA: Record<string, Record<string, unknown>[]> = {
   organizations: [
     {
       id: ORG_ID,
@@ -267,7 +269,9 @@ const DEMO_DATA: Record<string, any[]> = {
     {
       id: "chan-01",
       organization_id: ORG_ID,
-      channel_type: "waha",
+      // O provider vem da lista canônica (doutrina de restrição de canal):
+      // dado de demonstração não nomeia provider fora de lib/channels/.
+      channel_type: PROVIDERS_DE_MENSAGEM[0],
       name: "WhatsApp Comercial SomaFlow",
       status: "CONNECTED",
       phone_number: "+55 11 98888-7777",
@@ -340,14 +344,8 @@ export async function devSupabaseFetch(
   const pathname = parsed.pathname;
   const method = (init?.method || "GET").toUpperCase();
 
-  let accept = "";
-  if (init?.headers) {
-    if (typeof (init.headers as any).get === "function") {
-      accept = (init.headers as any).get("accept") || "";
-    } else {
-      accept = (init.headers as any).Accept || (init.headers as any).accept || "";
-    }
-  }
+  // `Headers` normaliza os três formatos de `HeadersInit` (objeto, par, Headers).
+  const accept = new Headers(init?.headers).get("accept") ?? "";
 
   const isSingle = accept.includes("vnd.pgrst.object+json");
 
@@ -398,7 +396,7 @@ export async function devSupabaseFetch(
     }
 
     if (method === "GET") {
-      let body: any = list;
+      let body: unknown = list;
       if (isSingle) {
         body = list[0] || {};
       }

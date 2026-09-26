@@ -6,6 +6,7 @@
  */
 
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import type { User } from "@supabase/supabase-js";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { cookies } from "next/headers";
 import { env } from "@/lib/env";
@@ -62,7 +63,7 @@ async function clienteDeServidor(sameSite: "strict" | "lax") {
     isDevSupabaseFallbackActive() &&
     cookieStore.get("somaflow_dev_session")?.value === "authenticated"
   ) {
-    const devUser = {
+    const devUser: User = {
       id: "00000000-0000-4000-8000-000000000001",
       app_metadata: {},
       user_metadata: { full_name: "Administrador SomaFlow", locale: "pt-BR" },
@@ -76,7 +77,7 @@ async function clienteDeServidor(sameSite: "strict" | "lax") {
       const res = await originalGetUser(jwt);
       if (res.data?.user) return res;
       return {
-        data: { user: devUser as any },
+        data: { user: devUser },
         error: null,
       };
     };
@@ -89,7 +90,7 @@ async function clienteDeServidor(sameSite: "strict" | "lax") {
             expires_in: 3600,
             expires_at: Math.floor(Date.now() / 1000) + 3600,
             refresh_token: "mock-refresh-token",
-            user: devUser as any,
+            user: devUser,
           },
         },
         error: null,

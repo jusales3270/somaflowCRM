@@ -36,6 +36,52 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  */
 import { ThreeDMarquee } from "@/components/ui/three-d-marquee";
 import { PublicAuthShell } from "@/components/auth/PublicAuthShell";
+import type { MarcaDeSaida } from "@/lib/branding/saida";
+
+/**
+ * O logo do operador, montado AQUI e entregue pronto ao `PublicAuthShell` (que só
+ * o posiciona e anima). Sem arte própria para o escuro, ele fica sobre um chip
+ * claro no tema escuro — sem isso, um logo de traço escuro (o do SomaFlow tem o
+ * "Soma" em cinza) some no fundo. Vigiado por `logo-nao-some-no-tema-escuro`.
+ *
+ * `<img>` em vez de next/image: a URL é de quem hospeda, e o `next/image` exige
+ * allowlist de domínios fechada em BUILD — a imagem pré-buildada recusaria o
+ * domínio do operador. Altura fixa e largura livre para não distorcer arte de
+ * proporção desconhecida. Os `data-testid` são lidos por `tests/e2e/marca-logo.spec.ts`.
+ */
+function logoDaFachada(marca: MarcaDeSaida, tamanho: string): React.ReactNode {
+  if (!marca.logoUrl && !marca.logoDarkUrl) return null;
+  return (
+    <div
+      className={
+        marca.logoDarkUrl
+          ? "rounded-md"
+          : "rounded-md dark:bg-white dark:px-3 dark:py-2 dark:shadow-sm"
+      }
+    >
+      {marca.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          data-testid="logo-da-fachada"
+          src={marca.logoUrl}
+          alt={marca.nome}
+          className={`${tamanho} w-auto object-contain${marca.logoDarkUrl ? " dark:hidden" : ""}`}
+        />
+      ) : (
+        <span className="dark:hidden">{marca.nome}</span>
+      )}
+      {marca.logoDarkUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          data-testid="logo-escuro-da-fachada"
+          src={marca.logoDarkUrl}
+          alt={marca.nome}
+          className={`hidden ${tamanho} w-auto object-contain dark:block`}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
   const marca = await marcaDaSaida(null);
@@ -61,7 +107,11 @@ export default async function PublicLayout({ children }: { children: React.React
             aria-hidden
           />
         </div>
-        <PublicAuthShell marca={marca}>
+        <PublicAuthShell
+          marca={marca}
+          logoGrande={logoDaFachada(marca, "h-[85px] md:h-[110px] max-w-[22rem]")}
+          logoPequeno={logoDaFachada(marca, "h-[67px] max-w-[20rem]")}
+        >
           {children}
         </PublicAuthShell>
       </div>
