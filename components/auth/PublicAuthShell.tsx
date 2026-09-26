@@ -3,16 +3,21 @@
 import { useState, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { X } from "@/lib/ui/icons";
+import { useT } from "@/hooks/i18n/useT";
 
 interface PublicAuthShellProps {
   marca: {
     nome: string;
     logoUrl: string | null;
   };
+  /** O logo pronto (com o chip do tema escuro), montado em `app/(public)/layout.tsx`. */
+  logoGrande: React.ReactNode;
+  logoPequeno: React.ReactNode;
   children: React.ReactNode;
 }
 
-export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
+export function PublicAuthShell({ marca, logoGrande, logoPequeno, children }: PublicAuthShellProps) {
+  const t = useT();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -21,15 +26,14 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
   const isDedicatedSubpage = pathname !== "/login";
   const hasQueryParams = searchParams?.has("error") || searchParams?.has("reset");
 
-  const [aberto, setAberto] = useState<boolean>(() => {
-    if (isDedicatedSubpage || hasQueryParams) return true;
-    // Em testes automatizados via headless (Playwright/CI), mantemos aberto para preenchimento direto
-    if (typeof window !== "undefined" && window.navigator?.webdriver) return true;
-    return false;
-  });
+  // O estado inicial depende só da URL — o servidor e a primeira passada do
+  // cliente precisam concordar (ler `window` aqui divergia na hidratação).
+  const [aberto, setAberto] = useState<boolean>(isDedicatedSubpage || Boolean(hasQueryParams));
 
   useEffect(() => {
-    if (isDedicatedSubpage || hasQueryParams) {
+    // Em testes automatizados via headless (Playwright/CI), o formulário abre
+    // direto para preenchimento — lido só no navegador, depois da hidratação.
+    if (isDedicatedSubpage || hasQueryParams || window.navigator?.webdriver) {
       setAberto(true);
     }
   }, [isDedicatedSubpage, hasQueryParams]);
@@ -41,7 +45,7 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
         <button
           type="button"
           onClick={() => setAberto(true)}
-          aria-label="Clique para entrar no CRM"
+          aria-label={t("Clique para entrar no CRM")}
           className="group relative flex flex-col items-center cursor-pointer select-none rounded-3xl p-6 transition-transform duration-300 hover:scale-105 active:scale-95 focus:outline-hidden"
         >
           {/* Brilho e reflexo sutil contido sob a logo, mantendo os prints nítidos */}
@@ -56,17 +60,11 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
 
           {/* Logo com animação pulsante entre as ondas */}
           <div className="somaflow-pulse-logo flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
-            {marca.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                data-testid="logo-da-fachada"
-                src={marca.logoUrl}
-                alt={marca.nome}
-                className="h-[85px] md:h-[110px] w-auto max-w-[22rem] object-contain"
-              />
-            ) : (
+            {logoGrande ?? (
+              // Sem `data-testid="logo-da-fachada"`: isto é o NOME em texto, não o
+              // logo do operador — marcado, ele sumia ao abrir o cartão e o e2e
+              // (marca-logo, caso 6) lia um "logo" que não existe.
               <span
-                data-testid="logo-da-fachada"
                 className="text-4xl font-bold tracking-tight text-white drop-shadow-[0_10px_20px_rgba(0,162,245,0.5)]"
               >
                 {marca.nome}
@@ -81,7 +79,7 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00a2f5] opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#00a2f5]"></span>
               </span>
-              <span>Clique para entrar</span>
+              <span>{t("Clique para entrar")}</span>
             </div>
           </div>
         </button>
@@ -97,24 +95,14 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
           type="button"
           onClick={() => setAberto(false)}
           className="absolute top-4 right-4 rounded-full p-1.5 text-muted-foreground hover:bg-surface-elevated hover:text-foreground transition-colors"
-          title="Fechar formulário"
-          aria-label="Voltar para a animação da logo"
+          title={t("Fechar formulário")}
+          aria-label={t("Voltar para a animação da logo")}
         >
           <X size={16} aria-hidden />
         </button>
       )}
 
-      {marca.logoUrl && (
-        <div className="flex justify-center mb-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            data-testid="logo-da-fachada"
-            src={marca.logoUrl}
-            alt={marca.nome}
-            className="h-[67px] w-auto max-w-[20rem] object-contain"
-          />
-        </div>
-      )}
+      {logoPequeno && <div className="flex justify-center mb-2">{logoPequeno}</div>}
       {children}
     </div>
   );

@@ -11,22 +11,32 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PontoDaEtiqueta } from "@/components/tags/PontoDaEtiqueta";
 import { useUser } from "@/hooks/auth/AuthProvider";
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { useAssignableAgents } from "@/hooks/kanban/useAssignableAgents";
 import type { Lead, OwnerKind } from "@/lib/types/leads";
+import { marcadoresDoCard } from "@/lib/kanban/marcadores-do-card";
 import { OwnerBadge } from "./OwnerBadge";
 import {
   agentOwnerFilter,
   parseAgentOwnerFilter,
   type LeadFilters,
 } from "@/lib/kanban/filters";
+import { categoriaDoMotivo } from "@/lib/leads/motivos-de-perda-do-funil";
+import { rotuloDoMotivoDePerda } from "@/lib/schemas/leads";
 import { cn } from "@/lib/utils";
 
 interface FilterBarProps {
   filters: LeadFilters;
   onChange: (next: LeadFilters) => void;
   leads: Lead[];
+  /**
+   * O `settings` do funil do quadro (issue #1537) — é dele que sai a categoria
+   * de cada motivo, que não é coluna do lead nem está no card. Sem isto o filtro
+   * de categoria não teria o que oferecer.
+   */
+  settings?: Record<string, unknown>;
 }
 
 const STATUS_OPTIONS: Array<{ value: NonNullable<LeadFilters["status"]>; label: string }> = [
@@ -36,7 +46,7 @@ const STATUS_OPTIONS: Array<{ value: NonNullable<LeadFilters["status"]>; label: 
   { value: "lost", label: "Perdidos" },
 ];
 
-export function FilterBar({ filters, onChange, leads }: FilterBarProps) {
+export function FilterBar({ filters, onChange, leads, settings }: FilterBarProps) {
   const t = useT();
   const user = useUser();
   const { data: members } = useAssignableMembers(true);
@@ -54,9 +64,17 @@ export function FilterBar({ filters, onChange, leads }: FilterBarProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
 
+  /**
+   * Quem OFERECE lê a MESMA regra de quem FILTRA (`applyFilters`) — ver
+   * lib/kanban/marcadores-do-card.ts. Antes eram só `l.tags`, a caixa do
+   * negócio: o marcador escrito no CONTATO não aparecia aqui nem casava lá.
+   *
+   * A varredura alcança o funil inteiro: a rota do quadro devolve todos os
+   * cards de uma vez, sem paginar.
+   */
   const tagOptions = useMemo(() => {
     const set = new Set<string>();
-    for (const l of leads) for (const t of l.tags) set.add(t);
+    for (const l of leads) for (const t of marcadoresDoCard(l)) set.add(t);
     return Array.from(set).sort();
   }, [leads]);
 
@@ -112,6 +130,36 @@ export function FilterBar({ filters, onChange, leads }: FilterBarProps) {
   );
 
   const tagLabel = filters.tag ?? t("Tag: todas");
+
+  /**
+   * Motivo e categoria da perda (issue #1537). As opções vêm do que ESTÁ no
+   * quadro, não do cadastro: um motivo que nenhum card tem nunca acharia nada.
+   * A categoria resolve pela MESMA régua de quem filtra (`applyFilters` →
+   * `categoriaDoMotivo`), porque filtrar por uma regra e mostrar por outra é o
+   * defeito que o filtro de marcador já teve.
+   */
+  const motivosPerdidos = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of leads) if (l.status === "lost" && l.lost_reason) set.add(l.lost_reason);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [leads]);
+  const categoriasPerdidas = useMemo(() => {
+    const set = new Set<string>();
+    for (const motivo of motivosPerdidos) {
+      const categoria = categoriaDoMotivo(motivo, settings);
+      if (categoria) set.add(categoria);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [motivosPerdidos, settings]);
+  /** Só com a aba em Perdidos: fora dela os dois filtros esconderiam tudo. */
+  const mostraPerda = (filters.status ?? "all") === "lost" && motivosPerdidos.length > 0;
+  // Canônico vira o rótulo traduzido; motivo próprio do funil é dado e sai como está.
+  const rotuloDoMotivo = (motivo: string) => {
+    const rotulo = rotuloDoMotivoDePerda(motivo);
+    return rotulo === motivo ? motivo : t(rotulo);
+  };
+  const motivoLabel = filters.lostReason ? rotuloDoMotivo(filters.lostReason) : t("Todos");
+  const categoriaLabel = filters.lostCategory ?? t("Todas");
 
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2">
@@ -186,9 +234,62 @@ export function FilterBar({ filters, onChange, leads }: FilterBarProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
+      {mostraPerda ? (
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                {t("Motivo")}: {motivoLabel}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => onChange({ ...filters, lostReason: undefined })}>
+                {t("Todos")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {motivosPerdidos.map((motivo) => (
+                <DropdownMenuItem
+                  key={motivo}
+                  onClick={() => onChange({ ...filters, lostReason: motivo })}
+                >
+                  {rotuloDoMotivo(motivo)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {categoriasPerdidas.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  {t("Categoria")}: {categoriaLabel}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onClick={() => onChange({ ...filters, lostCategory: undefined })}
+                >
+                  {t("Todas")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {categoriasPerdidas.map((categoria) => (
+                  <DropdownMenuItem
+                    key={categoria}
+                    onClick={() => onChange({ ...filters, lostCategory: categoria })}
+                  >
+                    {categoria}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </>
+      ) : null}
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" disabled={tagOptions.length === 0}>
+            {filters.tag ? <PontoDaEtiqueta tag={filters.tag} className="mr-2" /> : null}
             {tagLabel}
           </Button>
         </DropdownMenuTrigger>
@@ -199,6 +300,7 @@ export function FilterBar({ filters, onChange, leads }: FilterBarProps) {
           <DropdownMenuSeparator />
           {tagOptions.map((tag) => (
             <DropdownMenuItem key={tag} onClick={() => onChange({ ...filters, tag })}>
+              <PontoDaEtiqueta tag={tag} className="mr-2" />
               {tag}
             </DropdownMenuItem>
           ))}
@@ -223,6 +325,8 @@ export function FilterBar({ filters, onChange, leads }: FilterBarProps) {
         filters.owner ||
         filters.tag ||
         filters.overdueOnly ||
+        filters.lostReason ||
+        filters.lostCategory ||
         (filters.status && filters.status !== "all")) && (
         <Button
           variant="ghost"

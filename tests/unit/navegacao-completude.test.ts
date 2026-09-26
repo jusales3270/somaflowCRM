@@ -35,6 +35,10 @@ const NAV_ALLOWLIST: Record<string, string> = {
   "/app/ai/agents/new":
     "sub-fluxo de criar agente, alcançado pelo botão dentro da lista de Agentes",
   "/app/team/invite": "sub-fluxo de convite, alcançado de dentro de Equipe",
+  "/app/campaigns/new":
+    "sub-fluxo de criar campanha, alcançado pelo botão dentro da lista de Campanhas",
+  "/app/campaigns/settings":
+    "padrões de campanha da organização, alcançados pelo botão dentro da lista de Campanhas — é ajuste que se faz uma vez, não tela de uso diário",
   "/app/settings/tenant/whatsapp": "redirect legado para /app/connections; mantido por links salvos",
   "/app/settings/canal-oficial":
     "redirect para /app/connections?aba=oficial desde o PR #105 — conectar canal passou a ter um lugar só. Conexões é a porta; a aba é navegação interna dela",
@@ -75,8 +79,16 @@ describe("completude da navegação", () => {
     );
     expect(
       semPorta,
+      // ⚠️ O ENDEREÇO AQUI É O `catalogo.ts`, e não o `registry.ts`.
+      //
+      // Esta mensagem mandava ao `registry.ts` — que é de onde este arquivo
+      // IMPORTA, mas onde não há nada a declarar: ele deriva `NAV_DESTINATIONS`
+      // de `NAV_CATALOG` e reexporta. Quem fosse reprovado pelo CI abriria um
+      // arquivo sem um único lugar para pôr a tela. É a mensagem de erro que a
+      // pessoa lê no pior momento; mandá-la ao arquivo errado é o defeito mais
+      // caro dos dois (o `CLAUDE.md` repetia o mesmo engano, já corrigido).
       `Tela sem porta — existe mas não se chega nela pela navegação.\n` +
-        `Adicione ao registro (lib/navigation/registry.ts) declarando grupo, ou\n` +
+        `Declare em lib/navigation/catalogo.ts (NAV_CATALOG), com seu grupo, ou\n` +
         `à NAV_ALLOWLIST deste arquivo COM a justificativa:\n  ${semPorta.join("\n  ")}`,
     ).toEqual([]);
   });

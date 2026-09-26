@@ -18,14 +18,28 @@ export async function proxy(request: NextRequest) {
   response.headers.set("x-request-id", requestId);
 
   const { pathname, search } = request.nextUrl;
+  // Recupera retornos de OAuth social já emitidos antes da landing pública existir.
+  // Apenas a navegação é tratada: o vínculo de conta segue protegido pelos guards canônicos.
+  // Passa adiante só o SINAL `connected=1` — nunca o `connect_token` nem o valor recebido.
+  if (
+    request.method === "GET" &&
+    pathname === "/app/connections" &&
+    request.nextUrl.searchParams.has("connected") &&
+    request.nextUrl.searchParams.has("connect_token")
+  ) {
+    const landing = NextResponse.redirect(new URL("/auth/social-return?connected=1", request.url));
+    landing.headers.set("Cache-Control", "no-store");
+    landing.headers.set("Referrer-Policy", "no-referrer");
+    return landing;
+  }
   // Expose pathname to Server Components via header (used by onboarding layout).
   response.headers.set("x-pathname", pathname);
   request.headers.set("x-pathname", pathname);
 
-  // EPIC-11: in dev we route by path (`/admin/*`); in prod the
-  // `admin.deskcomm.com` sub-domain is mapped via Vercel rewrites to the same
-  // `/admin/*` paths. The host-based branch below stays a NOOP today and only
-  // exists as documentation of the intended deploy topology.
+  // EPIC-11: the admin surface is reached by PATH (`/admin/*`) — the self-host kit
+  // points `NEXT_PUBLIC_ADMIN_URL` at the same host as the app and maps no `admin.`
+  // sub-domain. The host-based branch below stays a NOOP today and only exists as
+  // documentation of the intended deploy topology.
   const host = request.headers.get("host") ?? "";
   const isAdminSurface = host.startsWith("admin.") || pathname.startsWith("/admin");
 

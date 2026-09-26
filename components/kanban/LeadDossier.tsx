@@ -7,12 +7,14 @@ import { useT } from "@/hooks/i18n/useT";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useLeadTimeline } from "@/hooks/leads/useLeadTimeline";
 import type { Lead } from "@/lib/types/leads";
+import { ContatoDoNegocio } from "./ContatoDoNegocio";
 import { ConversaNoDossie } from "./ConversaNoDossie";
 import { LeadFieldsForm } from "./LeadFieldsForm";
 import { ScoreSlot } from "./ScoreSlot";
 import { LeadTimeline } from "./LeadTimeline";
 import { OwnerBadge } from "./OwnerBadge";
 import { resolveLeadOwner } from "@/lib/kanban/owner";
+import { formatValorDoNegocio, MOEDA_PADRAO } from "@/lib/money";
 import type { CustomFieldDef } from "@/components/contacts/CustomFieldsEditor";
 
 interface Props {
@@ -25,17 +27,10 @@ interface Props {
   ownerNames?: Map<string, string | null>;
 }
 
-function formatBRL(cents: number | null, currency: string | null): string {
+function formatValor(cents: number | null, currency: string | null): string {
+  // Mesma régua e mesmo locale do card e do total da coluna (`formatValorDoNegocio`).
   if (cents === null) return "—";
-  try {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: currency ?? "BRL",
-      maximumFractionDigits: 0,
-    }).format(cents / 100);
-  } catch {
-    return `R$ ${(cents / 100).toFixed(0)}`;
-  }
+  return formatValorDoNegocio(cents, currency ?? MOEDA_PADRAO, { semCentavos: true });
 }
 
 /**
@@ -87,7 +82,7 @@ export function LeadDossier({
         {/* ① cabeçalho vivo */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border pb-3 text-xs">
           <span className="font-medium tabular-nums text-text">
-            {formatBRL(lead.value_cents, lead.currency)}
+            {formatValor(lead.value_cents, lead.currency)}
           </span>
           <span className="text-text-muted">{stageName}</span>
           <OwnerBadge
@@ -131,6 +126,15 @@ export function LeadDossier({
         )}
 
         <ConversaNoDossie conversa={lead.conversa} />
+
+        {/* Os dados do CLIENTE: telefone e e-mail numa aba, links (Instagram,
+            site, Google Meu Negócio…) na outra. Vêm do contato, não do lead. */}
+        <section className="border-b border-border py-3">
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+            {t("Contato")}
+          </h3>
+          <ContatoDoNegocio contactId={lead.contact_id} pipelineId={pipelineId} />
+        </section>
 
         {/* ② timeline */}
         <section className="flex-1 py-3">

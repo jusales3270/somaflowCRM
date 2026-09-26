@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test";
 import { createClient } from "@supabase/supabase-js";
 import { metadataInicialDoCanal } from "../../lib/ai/elegibilidade/pre-go-live";
 
@@ -34,7 +34,7 @@ test("admin configura testes, remove número, confirma abertura e volta a restri
   await page.goto("/login");
   await page.locator("#email").fill(email);
   await page.locator("#password").fill(password);
-  await page.getByRole("button", { name: /entrar/i }).click();
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await page.waitForURL(/\/app/);
   await page.goto("/app/connections");
   await expect(page.getByText("Canal de validação", { exact: true })).toBeVisible();

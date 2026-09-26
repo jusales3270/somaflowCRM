@@ -10,20 +10,36 @@
  * 0027 para o modelo de identidade canônica.
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { lancarFalhaDeIngestao } from "@/lib/waha/falha-transitoria";
+
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { audit } from "@/lib/audit";
 import { sincronizarSaudeDaConexao } from "@/lib/channels/health";
+import { marcarConversaComMensagem } from "@/lib/channels/marcar-conversa";
 import { aplicarEfeitosPosEntrada } from "@/lib/channels/pos-entrada";
-import { pausarIaPorAtendimentoManual } from "@/lib/escalacao/atendimento-manual";
+import {
+  MOTIVO_COMANDO_OFF,
+  pausarIaDuravelmente,
+  pausarIaPorAtendimentoManual,
+} from "@/lib/escalacao/atendimento-manual";
+import { agenteAceitaComandoDeCelular, lerComandoDeControle } from "@/lib/escalacao/comando-de-canal";
+import { devolverAtendimentoAoAgente } from "@/lib/escalacao/retomada";
+import { getWahaClient } from "@/lib/waha/client";
 import { acelerarPipelineDeEventos } from "@/lib/dev/kick-local-pipeline";
 import { canonicalPhoneBR } from "@/lib/channels/phone-variants";
 import { estamparAtribuicaoDoContato } from "@/lib/leads/atribuicao-de-anuncio";
+import { extrairEEstamparAtribuicaoGoogle } from "@/lib/plataformas-de-anuncio/google/atribuicao";
 import { extrairAtribuicaoWaha } from "@/lib/waha/atribuicao-de-anuncio";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { ackToStatus } from "@/lib/types/messaging";
 import type { WahaEnvelope, WahaPayload } from "@/lib/waha/envelope";
 import { bareWaMessageId, chatIdFromWaMessageId } from "@/lib/waha/message-id";
 import { logger } from "@/lib/logger";
+import {
+  ehNumeroInternoDeAviso,
+  registrarMensagemIgnorada,
+} from "@/lib/escalacao/numero-interno-de-aviso";
 
 export type Admin = ReturnType<typeof createAdminClient>;
 
@@ -36,6 +52,11 @@ export type Admin = ReturnType<typeof createAdminClient>;
  * primeira vez que alguém mexesse numa só. O helper unificado mantém o que esta
  * função garantia — prazo que expira sozinho, renovado a cada fala humana, e
  * silêncio maior NUNCA encurtado — e acrescenta o rastro de handoff.
+ *
+ * Os comandos `#on`/`#off` também entram por aqui, em
+ * `handleOutboundFromUserPhone`, SÓ para o agente que ligou "Comandos pelo
+ * celular": são lidos por `lerComandoDeControle` e escondidos do cliente com
+ * `revogarComando`.
  */
 
 /**
@@ -76,7 +97,19 @@ async function ehEcoDeEnvioNosso(
     .eq("direction", "outbound")
     // `sent_via` separa o que NASCEU aqui do que veio do celular: a linha do
     // celular é gravada como `external_device` e nunca pode servir de álibi.
-    .in("sent_via", ["ai", "user"])
+    //
+    // `automation` entrou junto do carimbo novo (#652). A mensagem que a REGRA
+    // manda nasceu aqui tanto quanto a da IA e a do composer; sem ela nesta
+    // lista, o eco do próprio envio da regra era lido como resposta pelo celular
+    // e a IA ficava pausada na conversa por causa de uma mensagem que o CRM
+    // mandou sozinho. Lista e carimbo andam juntos: quem escreve estes valores é
+    // `origemDaMensagem`, em `app/api/v1/messages/_handler.ts`.
+    //
+    // `system` ENTRA pela mesma razão, e o sintoma seria idêntico: é o valor que
+    // o envio por TOKEN DE SERVIDOR grava (#866). Fora desta lista, a linha da
+    // integração deixa de ser reconhecida como envio NOSSO, o eco do próprio
+    // envio vira "resposta pelo celular" e cala a IA por três horas.
+    .in("sent_via", ["ai", "user", "automation", "system"])
     // Sem `external_id` = ainda não confirmada pelo canal = ainda em voo. É esta
     // a janela exata em que o eco é indistinguível de digitação humana.
     .is("external_id", null)
@@ -108,6 +141,12 @@ async function ehEcoDeEnvioNosso(
 interface Session {
   id: string;
   organization_id: string;
+  /**
+   * Nome da sessão no WAHA. Só é usado para chamar o transporte de volta (ex.:
+   * revogar o comando `#on`/`#off`). Opcional porque há chamadas sintéticas
+   * (testes, caminhos internos) que não passam por uma linha de `channel_sessions`.
+   */
+  waha_session_name?: string | null;
 }
 
 /**
@@ -277,6 +316,30 @@ export function mediaUrlOf(p: WahaPayload): string | null {
 /** MIME da mídia: idem (payload.media.mimetype é o campo do NOWEB atual). */
 export function mediaMimeOf(p: WahaPayload): string | null {
   return p.mimetype ?? p.media?.mimetype ?? null;
+}
+
+/**
+ * `payload.timestamp` em ISO-8601, robusto à UNIDADE. O WAHA manda segundos
+ * (epoch s), mas um proxy/integrador pode mandar milissegundos ou
+ * nanossegundos — e `new Date(ns * 1000).toISOString()` LANÇA `RangeError:
+ * Invalid time value`, derrubando o webhook inteiro (medido em 2026-09-18).
+ * Aqui a unidade é inferida pela ordem de grandeza; valor ausente/ inválido cai
+ * no `agora`. Nunca lança.
+ */
+export function dataDoTimestamp(timestamp: number | null | undefined, agora: string): string {
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp <= 0) {
+    return agora;
+  }
+  // `Date` aceita até 8.64e15 ms. Segundos (~1.7e9) ×1000; ms (~1.7e12) direto;
+  // ns (~1.7e18) ÷1e6. Faixas separadas por ordem de grandeza.
+  const ms =
+    timestamp >= 1e16
+      ? timestamp / 1e6 // nanossegundos
+      : timestamp >= 1e11
+        ? timestamp // milissegundos
+        : timestamp * 1000; // segundos
+  const d = new Date(ms);
+  return Number.isNaN(d.getTime()) ? agora : d.toISOString();
 }
 
 /**
@@ -454,8 +517,7 @@ async function upsertContact(
     p_notify: notifyName,
   } as never);
   if (error) {
-    console.error("[waha.ingest] fn_upsert_wa_contact failed", error.message);
-    return null;
+    lancarFalhaDeIngestao("fn_upsert_wa_contact", error);
   }
   return (data as string) ?? null;
 }
@@ -472,8 +534,7 @@ async function upsertConversation(
     p_session: sessionId,
   } as never);
   if (error) {
-    console.error("[waha.ingest] fn_upsert_wa_conversation failed", error.message);
-    return null;
+    lancarFalhaDeIngestao("fn_upsert_wa_conversation", error);
   }
   return (data as string) ?? null;
 }
@@ -496,6 +557,11 @@ async function upsertConversation(
  *
  * O evento é o que torna a pergunta respondível: `select count(*) from event_log
  * where event_type = 'whatsapp.conversation_mark_failed'`.
+ *
+ * ⚠️ O CORPO MUDOU DE CASA, e o motivo está em `lib/channels/marcar-conversa.ts`:
+ * Meta e Zernio chamavam a mesma RPC e tratavam a falha pior — a Meta ignorava
+ * o retorno inteiro. Esta função continua existindo com a assinatura que os dois
+ * chamadores daqui usam; quem decide o que fazer com a falha é uma só.
  */
 async function markConversation(
   admin: Admin,
@@ -505,35 +571,14 @@ async function markConversation(
   preview: string,
   at: string,
 ): Promise<void> {
-  const { error } = await admin.rpc("fn_mark_conversation_message" as never, {
-    p_conv: convId,
-    p_direction: direction,
-    p_preview: preview,
-    p_at: at,
-  } as never);
-  if (!error) return;
-
-  const { error: erroAviso } = await admin.rpc("emit_event" as never, {
-    p_event_type: "whatsapp.conversation_mark_failed",
-    p_entity_kind: "conversation",
-    p_entity_id: convId,
-    // O preview NÃO entra no payload: ele é o texto da mensagem do cliente, e
-    // isto é registro operacional, não cópia de conteúdo. O que se precisa
-    // saber para agir é qual conversa, que sentido, e o erro.
-    p_payload: { direction, erro: error.message },
-    p_metadata: { severity: "warn" },
-    p_organization_id: organizationId,
-  } as never);
-
-  if (erroAviso) {
-    // Segunda linha de defesa: o próprio canal de aviso caiu. Aqui o log do
-    // processo é o que sobra — é para ESTE caso que ele existe, não como rotina.
-    console.error("[waha.ingest] o carimbo falhou E o aviso também", {
-      conversa: convId,
-      erro: error.message,
-      aviso: erroAviso.message,
-    });
-  }
+  await marcarConversaComMensagem(admin as unknown as SupabaseClient, {
+    organizationId,
+    conversationId: convId,
+    direction,
+    preview,
+    at,
+    canal: "waha",
+  });
 }
 
 /**
@@ -580,6 +625,20 @@ async function handleInbound(
     return;
   }
 
+  // ── O NÚMERO INTERNO DE AVISOS NÃO VIRA ATENDIMENTO ─────────────────────
+  //
+  // Aqui, e não em `pos-entrada`: é o INSERT da conversa (logo abaixo) que
+  // dispara o pedido de rodízio pelo banco. Cortar depois já teria criado
+  // contato, conversa e uma "conversa do suporte" na fila de um atendente — e o
+  // "cancelar" que alguém da equipe digitasse bloquearia esse contato.
+  if (await ehNumeroInternoDeAviso(admin, session.organization_id, parsed)) {
+    await registrarMensagemIgnorada(admin, session.organization_id, {
+      direction: "inbound",
+      sessionId: session.id,
+    });
+    return;
+  }
+
   const contactId = await upsertContact(
     admin,
     session.organization_id,
@@ -592,13 +651,18 @@ async function handleInbound(
 
   // Best-effort: o dado do anúncio (se houver) vai embutido na PRÓPRIA
   // mensagem que o app do cliente manda ao clicar num anúncio "Clique para o
-  // WhatsApp" — não é exclusivo da API oficial. NUNCA verificado contra um
-  // clique real nesta instalação (ver cabeçalho de `atribuicao-de-anuncio.ts`);
-  // por isso é silencioso quando não reconhece a forma, nunca derruba o
-  // inbound. `estamparAtribuicaoDoContato` só grava na primeira vez — se o
+  // WhatsApp" — não é exclusivo da API oficial. O WAHA NOWEB pode entregar
+  // `externalAdReply`; formas não reconhecidas seguem silenciosas e nunca
+  // derrubam o inbound.
+  // `estamparAtribuicaoDoContato` só grava na primeira vez — se o
   // contato já tem atribuição, o UPDATE casa zero linhas.
   const atribuicao = extrairAtribuicaoWaha(p._data?.message);
-  if (atribuicao) await estamparAtribuicaoDoContato(admin, contactId, atribuicao);
+  if (atribuicao) await estamparAtribuicaoDoContato(admin, session.organization_id, contactId, atribuicao);
+
+  // Irmão do bloco acima, para o Google: o token vem no PRÓPRIO texto da
+  // mensagem (não há payload de ad-reply equivalente para essa plataforma) —
+  // ver o cabeçalho de `lib/plataformas-de-anuncio/google/atribuicao.ts`. Best-effort.
+  await extrairEEstamparAtribuicaoGoogle(admin, session.organization_id, contactId, texto);
 
   const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
   if (!conversationId) return;
@@ -620,7 +684,7 @@ async function handleInbound(
       media_url: mediaUrlOf(p),
       media_mime: mediaMimeOf(p),
       sent_via: "external_device",
-      sent_at: p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now,
+      sent_at: dataDoTimestamp(p.timestamp, now),
       delivered_at: now,
       metadata: { raw_type: p.type, ack_name: p.ackName },
     })
@@ -629,8 +693,10 @@ async function handleInbound(
 
   // Idempotência: 23505 = unique (organization_id, external_id) já ingerido.
   if (insertErr && insertErr.code !== "23505") {
-    console.error("[waha.ingest] message insert failed", insertErr.message);
-    return;
+    // Era `console.error` + `return`, e a rota devolvia 200: a mensagem do
+    // cliente sumia. Agora lança — transitória vira 503 (o WAHA reentrega) e
+    // fica marcada para o cron `webhook-replay`. Ver `falha-transitoria.ts`.
+    lancarFalhaDeIngestao("messages.insert inbound", insertErr);
   }
   if (insertErr?.code === "23505") {
     // O `return` está certo — reingerir duplicaria a mensagem do cliente. Mas
@@ -670,7 +736,7 @@ async function handleInbound(
     return;
   }
 
-  await markConversation(admin, session.organization_id, conversationId, "inbound", previewFromMessage(p), p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now);
+  await markConversation(admin, session.organization_id, conversationId, "inbound", previewFromMessage(p), dataDoTimestamp(p.timestamp, now));
 
   await audit({
     action: "message.received",
@@ -743,6 +809,38 @@ async function handleInbound(
 }
 
 /**
+ * Esconde do cliente os comandos de controle (`#on`/`#off`).
+ *
+ * O operador digita o comando no MESMO chat do cliente — o celular dele é o
+ * número do bot —, então sem revogar o cliente recebe literalmente "#off".
+ * `DELETE .../messages/{id}` com `fromMe: true` é "apagar para todos" no WAHA.
+ *
+ * BEST-EFFORT de propósito: a mensagem JÁ está gravada e o efeito (pausar/ligar)
+ * JÁ foi aplicado quando chegamos aqui. Falhar em revogar só deixa o comando
+ * visível — não pode derrubar a ingestão nem desfazer a decisão.
+ */
+async function revogarComando(
+  session: Session,
+  chatId: string,
+  messageId: string | undefined,
+): Promise<void> {
+  if (!messageId) return;
+  const sessionName = session.waha_session_name;
+  if (!sessionName) return;
+  const client = getWahaClient();
+  if (!client) return;
+  try {
+    await client.deleteMessage(sessionName, chatId, messageId);
+  } catch (err) {
+    logger.warn("[waha.ingest] não consegui revogar o comando do celular", {
+      organization_id: session.organization_id,
+      message_id: messageId,
+      detail: err instanceof Error ? err.message.slice(0, 160) : "erro",
+    });
+  }
+}
+
+/**
  * fromMe=true: operador respondeu direto do WhatsApp dele (não pelo composer).
  * Contato = destinatário (`to`). `from` é o próprio número do operador — nunca
  * vira contato. Registrado como outbound p/ o operador ver o histórico completo.
@@ -781,6 +879,21 @@ async function handleOutboundFromUserPhone(
   // duplicata desta guarda, descartando calado justamente o caso que se quer ver.
   if (!ehEnderecavel(parsed)) {
     await avisarChatNaoReconhecido(admin, session.organization_id, session.id, chatId, "outbound");
+    return;
+  }
+
+  // ── O NÚMERO INTERNO DE AVISOS NÃO VIRA ATENDIMENTO ─────────────────────
+  //
+  // ANTES do dedup por `external_id` e do `upsertContact`. O aviso sai por
+  // TRANSPORTE DIRETO e não grava linha em `messages`, então o reconhecimento
+  // de eco não o reconhece como nosso — sem este corte, o próprio aviso que
+  // acabou de sair voltaria pelo webhook, viraria conversa com o número do
+  // plantão e ainda chamaria `pausarIaPorAtendimentoManual` no fim.
+  if (await ehNumeroInternoDeAviso(admin, session.organization_id, parsed)) {
+    await registrarMensagemIgnorada(admin, session.organization_id, {
+      direction: "outbound",
+      sessionId: session.id,
+    });
     return;
   }
 
@@ -831,6 +944,11 @@ async function handleOutboundFromUserPhone(
   const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
   if (!conversationId) return;
 
+  // Comando de controle vindo do celular (`#on`/`#off`). Só a mensagem INTEIRA
+  // conta (ver `lib/escalacao/comando-de-canal.ts`). Reconhecer não é aplicar:
+  // quem decide se vale é o interruptor do agente, lá embaixo.
+  const comando = lerComandoDeControle(bodyOf(p));
+
   const now = new Date().toISOString();
   const { data: insertedOutbound, error: insertErr } = await admin
     .from("messages")
@@ -848,14 +966,13 @@ async function handleOutboundFromUserPhone(
       media_url: mediaUrlOf(p),
       media_mime: mediaMimeOf(p),
       sent_via: "external_device",
-      sent_at: p.timestamp ? new Date(p.timestamp * 1000).toISOString() : now,
+      sent_at: dataDoTimestamp(p.timestamp, now),
       metadata: { raw_type: p.type, fromMe: true },
     })
     .select("id")
     .maybeSingle();
   if (insertErr && insertErr.code !== "23505") {
-    console.error("[waha.ingest] outbound insert failed", insertErr.message);
-    return;
+    lancarFalhaDeIngestao("messages.insert outbound", insertErr);
   }
   if (insertErr?.code === "23505") {
     // Mesma razão do inbound: dedup é esperado, invisível não.
@@ -869,39 +986,78 @@ async function handleOutboundFromUserPhone(
 
   await markConversation(admin, session.organization_id, conversationId, "outbound", previewFromMessage(p), now);
 
-  // Uma PESSOA respondeu este cliente pelo celular, fora do composer/IA — a IA
-  // para NESTA conversa para não responder junto, por uma janela que expira
-  // sozinha (ver `PRAZO_DO_SILENCIO_MS`). NÃO mexe em `contacts.ai_authorized_at`
-  // — a origem do lead é outro estado.
+  // ── CONTROLE DO AUTOMÁTICO NESTA CONVERSA ─────────────────────────────────
   //
-  // ⚠️ MAS ANTES: isto é MESMO um humano, ou é o eco do nosso próprio envio?
+  // Três desfechos para uma mensagem `fromMe` que NÃO é eco:
+  //   - `#off`         → pausa DURÁVEL (só `#on` ou a tela do CRM religam)
+  //   - `#on`          → devolve o atendimento à IA (limpa as 3 travas)
+  //   - mensagem normal → pausa (uma pessoa assumiu pelo celular)
+  // Os dois comandos e a pausa DURÁVEL da mensagem normal só existem para o
+  // agente que ligou "Comandos pelo celular". Desligado (o padrão), nada muda:
+  // `#on`/`#off` são texto comum e a pausa tem prazo (`PRAZO_DO_SILENCIO_MS`).
   //
-  // ⚠️ NÃO basta o `jaRegistrada` acima. Este comentário já afirmou que bastava
-  // ("o eco do nosso próprio envio já saiu no dedup") e a afirmação é FALSA,
-  // medida na fonte: `jaRegistrada` casa por `.in("external_id", …)`, e todo
-  // envio do CRM grava a linha ANTES de falar com o canal (`status='queued'`,
-  // `external_id` NULL) — o id só existe depois que o WAHA responde. Nessa
-  // janela o dedup não casa nada, o eco chega com `fromMe`, e esta função
-  // concluía "humano assumiu". A tela mostrava "Automático pausado", um estado
-  // legítimo que ninguém investiga. (issue #519, consertada no #521)
-  //
-  // Aqui isso é PIOR do que era: o silêncio deste caminho é um estado que dura
-  // até vencer o prazo ou até alguém clicar — a IA passaria a se calar porque
-  // ela mesma falou.
+  // ⚠️ A GUARDA DE ECO VEM PRIMEIRO, e a ordem importa. O eco de um envio nosso
+  // (composer/IA) chega por este mesmo caminho com `fromMe`, e não pode ser lido
+  // como comando nem como "humano assumiu". O `jaRegistrada` acima NÃO basta: o
+  // envio grava a linha ANTES de falar com o canal (`status='queued'`,
+  // `external_id` NULL), e nessa janela o dedup não casa — o eco chega e esta
+  // função concluía "humano assumiu". A tela mostrava "Automático pausado", um
+  // estado legítimo que ninguém investiga. (issue #519, consertada no #521)
   //
   // As DUAS decisões que eram uma só se separam aqui, e em direções OPOSTAS de
   // propósito:
-  //   gravar a linha  -> tolerante  (na dúvida grava; perder mensagem é pior que
+  //   gravar a linha   -> tolerante (na dúvida grava; perder mensagem é pior que
   //                                  duplicar — é o #108, que já custou caro)
-  //   silenciar o bot -> ESTRITO    (na dúvida NÃO cala; calar a IA por engano é
-  //                                  pior que não calar)
+  //   mexer no automa. -> ESTRITO   (na dúvida NÃO age; calar/ligar a IA por
+  //                                  engano é pior que não agir)
   // Quem reaproveitar esta condição para pular o INSERT reabre o #108.
-  if (!(await ehEcoDeEnvioNosso(admin, session.organization_id, conversationId, p))) {
-    await pausarIaPorAtendimentoManual(admin, {
-      organizationId: session.organization_id,
-      conversationId,
-      canal: "waha",
-    });
+  const ehEco = await ehEcoDeEnvioNosso(admin, session.organization_id, conversationId, p);
+  let comandoAplicado: typeof comando = null;
+  if (!ehEco) {
+    let revogar = true;
+    // C-076: o interruptor é do agente que atende ESTA conversa
+    // (`ai_agents.config.aceita_comandos_celular`, ligado na tela). FAIL-CLOSED:
+    // falha de leitura ⇒ desligado ⇒ o comportamento de antes do recurso.
+    const aceita = await agenteAceitaComandoDeCelular(admin, session.organization_id, conversationId);
+    comandoAplicado = aceita ? comando : null;
+    if (comandoAplicado === "off") {
+      await pausarIaDuravelmente(admin, {
+        organizationId: session.organization_id,
+        conversationId,
+        canal: "waha",
+        motivo: MOTIVO_COMANDO_OFF,
+      });
+    } else if (comandoAplicado === "on") {
+      const devolucao = await devolverAtendimentoAoAgente(
+        {
+          supabase: admin,
+          organizationId: session.organization_id,
+          actor: { type: "webhook_source", id: session.id },
+          requestId,
+        },
+        { conversationId },
+      );
+      if (!devolucao.ok) {
+        // O `#on` fica VISÍVEL no chat: é o único sinal de que o atendente
+        // precisa repetir (ou devolver pela tela).
+        revogar = false;
+        logger.warn("waha.ingest: #on do celular nao devolveu o atendimento ao agente", {
+          organization_id: session.organization_id,
+          conversation_id: conversationId,
+          erro: devolucao.erro,
+          detalhe: devolucao.detalhe,
+        });
+      }
+    } else {
+      await pausarIaPorAtendimentoManual(admin, {
+        organizationId: session.organization_id,
+        conversationId,
+        canal: "waha",
+        duravel: aceita,
+      });
+    }
+    // O comando não é fala de atendimento: esconde do cliente depois de aplicar.
+    if (comandoAplicado && revogar) await revogarComando(session, chatId, p.id);
   }
 
   await audit({
@@ -909,7 +1065,13 @@ async function handleOutboundFromUserPhone(
     organizationId: session.organization_id,
     resourceType: "message",
     requestId,
-    metadata: { conversation_id: conversationId, type: p.type, external_id: p.id, from_user_phone: true },
+    metadata: {
+      conversation_id: conversationId,
+      type: p.type,
+      external_id: p.id,
+      from_user_phone: true,
+      ...(comandoAplicado ? { control_command: comandoAplicado } : {}),
+    },
   });
 
   if (insertedOutbound?.id && mediaUrlOf(p)) {

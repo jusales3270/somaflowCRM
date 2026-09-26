@@ -5,6 +5,9 @@
  *  Wave 4 (S-13.04): +3 read (leads list/get, pipelines list)
  *                    +4 write (create_lead, update_lead, move_lead_stage, send_whatsapp)
  *                    +1 handoff (request_human_handoff). Total 13 tools.
+ *  +1 write (start_conversation_and_send): cold-start de conversa nova num
+ *  canal escolhido, pra automação externa com chave (`requiresRole: manager`,
+ *  `apenasHumano` no catálogo — nunca alcançável pelo agente publicado).
  */
 import type { McpToolDefinition } from "../types";
 import { TOOL_CATALOG, VALID_TOOL_IDS } from "./catalog";
@@ -13,6 +16,7 @@ import {
   crmListConversations,
   crmGetConversation,
   crmGetConversationHistory,
+  crmCreateConversationDraft,
 } from "./conversations";
 import {
   crmListLeads,
@@ -20,9 +24,11 @@ import {
   crmCreateLead,
   crmUpdateLead,
   crmMoveLeadStage,
+  crmRetomarLead,
 } from "./leads";
-import { crmListPipelines } from "./pipelines";
+import { crmGetPipelineForecast, crmListPipelines } from "./pipelines";
 import { crmSendWhatsappMessage } from "./messages";
+import { crmStartConversationAndSend } from "./start-conversation";
 import {
   crmAssignConversation,
   crmManageTags,
@@ -45,6 +51,7 @@ import {
   crmSaveOrgMemory,
 } from "./evolucao";
 import { crmListContactOrders, crmSearchProducts } from "./comercio";
+import { crmDescribeExternalData, crmQueryExternalData } from "./dados-externos";
 import { crmListPrivacyRequests } from "./privacidade";
 import {
   crmArchiveStage,
@@ -67,6 +74,7 @@ import {
   crmBookAppointment,
   crmCancelAppointment,
   crmConfirmAppointment,
+  crmFindAndBookAppointment,
   crmFindFreeSlots,
   crmListAppointments,
   crmListEventTypes,
@@ -75,6 +83,7 @@ import {
 } from "./agendamento";
 import {
   crmScheduleFollowup,
+  crmEnrollFollowupFlow,
   crmCancelFollowup,
   crmListFollowups,
   crmListAtRiskLeads,
@@ -102,6 +111,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListLeads,
   crmGetLead,
   crmListPipelines,
+  crmGetPipelineForecast,
   crmSearchKnowledge,
   crmListKnowledgeSources,
   crmListImprovementProposals,
@@ -109,6 +119,8 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmSaveOrgMemory,
   crmListContactOrders,
   crmSearchProducts,
+  crmDescribeExternalData,
+  crmQueryExternalData,
   crmListPrivacyRequests,
   // read — organizar a operação (W4)
   crmListStages,
@@ -126,6 +138,9 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmListHumanCases,
   crmGetHumanCase,
   // write
+  // A que consulta E marca numa chamada só vem primeiro: quando o cliente já deu
+  // dia e hora, é o caminho curto, e é o que evita o turno morrer no meio (#831).
+  crmFindAndBookAppointment,
   crmBookAppointment,
   crmRescheduleAppointment,
   crmCancelAppointment,
@@ -134,7 +149,10 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmCreateLead,
   crmUpdateLead,
   crmMoveLeadStage,
+  crmRetomarLead,
   crmSendWhatsappMessage,
+  crmStartConversationAndSend,
+  crmCreateConversationDraft,
   crmAssignConversation,
   crmManageTags,
   // write — organizar a operação (W4)
@@ -145,6 +163,7 @@ export const allTools: ReadonlyArray<McpToolDefinition> = [
   crmSetWebhookSourceActive,
   crmSetAutomationRuleActive,
   crmScheduleFollowup,
+  crmEnrollFollowupFlow,
   crmCancelFollowup,
   crmCloseDemand,
   crmProposeReactivation,

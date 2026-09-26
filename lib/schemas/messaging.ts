@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { COMANDOS_DO_BANCO, type ComandoDoBanco } from "@/lib/inbox/comando-da-conversa";
+import { PISO_DA_BUSCA, buscaValeConsulta } from "@/lib/inbox/termo-de-busca";
 
 /**
  * O que a API aceita ESCREVER. Cinco valores, e a ausência de `pending`/`resolved`
@@ -95,6 +96,17 @@ export const sendMessageSchema = z
      * o vocabulário do canal, que é justamente o que o seam existe para evitar.
      */
     reply_to_message_id: z.string().uuid().optional(),
+    /**
+     * Quem DECIDIU este envio, quando quem aperta é um token (#1613).
+     *
+     * O token é da organização, não de uma pessoa: sem este campo, a conversa
+     * perde que foi Fulano — do ERP, da agenda, do sistema de cobrança — que
+     * mandou a mensagem. O campo só CHEGA até o insert se a rota o validar
+     * (escopo `messages:on_behalf` no token + membro ativo desta org com papel
+     * de atendente ou acima): quem valida é a rota, porque o escopo mora na
+     * linha do token e o membership, no banco.
+     */
+    on_behalf_of_user_id: z.string().uuid().optional(),
   })
   .refine(
     (d) => {
@@ -314,7 +326,35 @@ export const listConversationsQuerySchema = z.object({
   assigned_to: z.union([z.string().uuid(), z.literal("me"), z.literal("unassigned")]).optional(),
   channel_session_id: z.string().uuid().optional(),
   tag: conversationTagSchema.optional(),
-  search: z.string().optional(),
+  /**
+   * Só as que têm mensagem não lida para o dono.
+   *
+   * NASCEU FORA DO CONTRATO E POR ISSO FORA DE TODO MECANISMO. Era `onlyUnread`,
+   * um predicado aplicado em memória sobre a página JÁ TRUNCADA (50 linhas): com
+   * as 50 primeiras lidas, a tela dizia "Sem conversas por aqui" — e o botão
+   * "Carregar mais" nem era desenhado, porque o estado vazio retornava antes dele.
+   * Medido na tela: ligar o filtro não gerava requisição nenhuma.
+   *
+   * Estando aqui, `tests/unit/rota-le-todo-filtro-do-schema.test.ts` passa a
+   * cobrá-lo sozinho — a cerca deriva as chaves deste schema.
+   */
+  unread: z.coerce.boolean().optional(),
+  /**
+   * O termo de busca. A régua inteira vive em `lib/inbox/termo-de-busca.ts`, e a
+   * tela lê a MESMA — repetir aqui faria os dois divergirem, e a divergência
+   * apareceria como erro na cara de quem digita (a rota recusa e o hook mostra).
+   *
+   * `buscaValeConsulta` mede o termo DEPOIS de normalizado, e não o cru: um termo
+   * feito só de pontuação passa por qualquer piso de caracteres e vira string
+   * vazia na normalização — e vazio no `ilike` casa TUDO.
+   */
+  search: z
+    .string()
+    .trim()
+    .refine(buscaValeConsulta, {
+      message: `A busca precisa de pelo menos ${PISO_DA_BUSCA} caracteres.`,
+    })
+    .optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });

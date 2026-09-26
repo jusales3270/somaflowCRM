@@ -15,6 +15,7 @@ import type { Queryable } from '../../queue/queue';
 import type { CrmEdgeConfig } from './mcp-client';
 import { deriveLgpdFromContact, type LgpdInput } from '../../guardrails/lgpd/legal-basis';
 import { isoLocalComOffset } from '@/lib/tempo/agora';
+import { nomeDoContato } from '@/lib/contacts/rotulo-do-contato';
 
 /**
  * Heurística conservadora de contagem: ~3,5 chars/token para pt-br (BPE real fica
@@ -277,7 +278,7 @@ export async function getLeadContext(
       lead_id: input.leadId,
       contact_id: input.leadId,
       contact: {
-        name: contact.display_name ?? contact.name,
+        name: nomeDoContato(contact),
         phone: contact.phone_number,
         email: contact.email,
         tags: contact.tags ?? [],
@@ -291,6 +292,45 @@ export async function getLeadContext(
     input.fuso,
   );
   return { ok: true, context, tokenCount: countPayloadTokens(JSON.stringify(context)), lgpd };
+}
+
+/** As colunas do CRM de que o corpo de UMA mensagem depende. */
+export interface CorpoDaMensagemRow {
+  type: string;
+  body: string | null;
+  media_url: string | null;
+  media_storage_path: string | null;
+  media_derived_text: string | null;
+}
+
+/**
+ * O corpo de UMA mensagem como o prompt o lê — UMA composição, DOIS leitores.
+ *
+ * O histórico (`fitToBudget`, logo abaixo) sempre compôs o corpo da linha. A
+ * linha canônica do job (`inbound-turn.ts:loadInboundBodyForJob`) lia a coluna
+ * `body` CRUA — as duas leem a MESMA linha por caminhos diferentes, e a
+ * divergência não é teórica: áudio e foto chegam sem legenda, isto é, com `body`
+ * NULL (o ingest do transporte devolve cedo quando a mensagem não tem texto,
+ * nem URL de mídia, nem mídia), e o conteúdo é o derivado (transcrição/visão,
+ * gravado DEPOIS pelo
+ * `media-derive-worker` — a corrida) ou o marcador `[tipo]`. Lido cru, um áudio
+ * transcrito valia `''` enquanto o texto do cliente estava no histórico logo
+ * abaixo: a abertura anunciava "não há texto utilizável" sobre uma mensagem que
+ * TEM texto, e a barreira do falso-vazio desarmava, porque
+ * `claimsCurrentInboundIsEmpty` não arma sobre `''`. (issue #617)
+ *
+ * `@internal` só na intenção de não espalhar a receita: quem lê uma linha de
+ * `messages` para o prompt passa por aqui, senão a composição volta a divergir.
+ */
+export function corpoDaMensagem(m: CorpoDaMensagemRow): string {
+  const hasMedia = Boolean(m.media_storage_path || m.media_url);
+  const derived = m.media_derived_text;
+  // Onda 3: legenda e derivado (transcrição/visão/pdf) COEXISTEM, e o derivado
+  // vem ENQUADRADO (frameMediaBody) — sem isso o agente caía no reflexo
+  // "não consigo ver mídia" mesmo tendo o conteúdo. Sem derivado, marcador [tipo].
+  return derived
+    ? frameMediaBody(m.type, m.body, derived)
+    : (m.body ?? (hasMedia ? `[${m.type}]` : ''));
 }
 
 /**
@@ -307,13 +347,10 @@ function fitToBudget(
 ): LeadContext {
   let messages: LeadContextMessage[] = history.map((m) => {
     const hasMedia = Boolean(m.media_storage_path || m.media_url);
-    const derived = m.media_derived_text;
-    // Onda 3: legenda e derivado (transcrição/visão/pdf) COEXISTEM, e o derivado
-    // vem ENQUADRADO (frameMediaBody) — sem isso o agente caía no reflexo
-    // "não consigo ver mídia" mesmo tendo o conteúdo. Sem derivado, marcador [tipo].
-    const body = derived
-      ? frameMediaBody(m.type, m.body, derived)
-      : (m.body ?? (hasMedia ? `[${m.type}]` : ''));
+    // A composição do corpo é UMA só, exportada logo acima: a linha canônica do
+    // job passa pela mesma função. Duas receitas para a mesma linha foi o defeito
+    // da #617 — o histórico mostrava o texto do áudio e a abertura dizia vazio.
+    const body = corpoDaMensagem(m);
     return {
       direction: m.direction,
       body,
@@ -345,6 +382,9 @@ const MEDIA_NOUN: Record<string, string> = {
   sticker: 'uma figurinha',
 };
 
+/** Como toda mídia enquadrada começa — `textoDoClienteNaUltimaMensagem` a reconhece por ela. */
+const INICIO_DA_MOLDURA_DE_MIDIA = '[Mídia do cliente:';
+
 /**
  * Enquadra o derivado de mídia como PERCEPÇÃO do agente (Onda 3, ajuste pós-prova).
  * Sem isto, o modelo via a transcrição/descrição mas respondia "não consigo ver
@@ -355,13 +395,34 @@ const MEDIA_NOUN: Record<string, string> = {
 export function frameMediaBody(type: string, caption: string | null, derived: string): string {
   const noun = MEDIA_NOUN[type] ?? 'uma mídia';
   const parts = [
-    `[Mídia do cliente: ele enviou ${noun} e o sistema já processou o conteúdo pra você. ` +
+    `${INICIO_DA_MOLDURA_DE_MIDIA} ele enviou ${noun} e o sistema já processou o conteúdo pra você. ` +
       `Trate o texto abaixo como se você mesma tivesse visto/ouvido — NUNCA responda que não ` +
       `consegue ver/ouvir mídia. Comente ou use o conteúdo naturalmente.]`,
   ];
   if (caption && caption.trim() !== '') parts.push(`Legenda do cliente: ${caption.trim()}`);
   parts.push(`Conteúdo: ${derived}`);
   return parts.join('\n');
+}
+
+/**
+ * O que o CLIENTE digitou na última mensagem dele, e nada que o sistema compôs
+ * em volta — `''` quando ela é mídia. É o dado que sai para um fornecedor sob o
+ * aceite "cada mensagem, sozinha" (o Jev, R4).
+ *
+ * O `body` de uma mídia no contexto é COMPOSTO (`corpoDaMensagem`): transcrição,
+ * descrição da imagem ou texto do PDF, e a moldura de instrução do agente. Isso é
+ * o que o sistema derivou, não o que o cliente mandou — nome, endereço e dado de
+ * saúde de um laudo iriam junto. A moldura é conferida além do `type` porque o
+ * derivado sobrevive à mídia apagada (a anonimização zera a mídia, não ele).
+ *
+ * ponytail: a legenda de uma mídia também fica de fora. Separá-la exigiria a
+ * coluna crua no contexto; e o classificador de sempre respondeu sobre o corpo
+ * composto, então comparar os dois ali não seria a mesma pergunta.
+ */
+export function textoDoClienteNaUltimaMensagem(messages: readonly LeadContextMessage[]): string {
+  const ultima = messages.findLast((m) => m.direction === 'inbound');
+  if (!ultima || ultima.type !== undefined || ultima.body.startsWith(INICIO_DA_MOLDURA_DE_MIDIA)) return '';
+  return ultima.body;
 }
 
 /** @internal exposto p/ teste — não usar fora de testes. */

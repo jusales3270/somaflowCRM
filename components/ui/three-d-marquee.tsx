@@ -87,14 +87,16 @@ export function ThreeDMarquee({ className }: ThreeDMarqueeProps) {
                         <div className='ml-2 h-2 w-20 rounded-full bg-zinc-200/70 dark:bg-zinc-700/70' />
                       </div>
 
-                      {/* Print nítido e ampliado do CRM */}
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        className='aspect-16/10 w-full object-cover object-top select-none'
-                        src={src}
-                        draggable={false}
-                        alt={`Interface CRM ${imgIdx + 1}`}
-                        loading='eager'
+                      {/* Print nítido e ampliado do CRM. Fundo CSS, e não <img>: é
+                          decoração — leitor de tela não anuncia 20 "imagens", e a
+                          fachada sem logo continua sem <img> nenhuma (cerca
+                          marca-na-fachada-de-acesso). Mesmo enquadramento do
+                          object-cover/object-top de antes. */}
+                      <div
+                        aria-hidden
+                        data-print={imgIdx + 1}
+                        className='aspect-16/10 w-full select-none bg-cover bg-top bg-no-repeat'
+                        style={{ backgroundImage: `url(${src})` }}
                       />
                     </div>
                   ))}

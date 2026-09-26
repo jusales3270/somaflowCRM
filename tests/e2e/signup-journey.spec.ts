@@ -10,7 +10,8 @@
  * Pré-requisitos: Supabase local com Mailpit + app `next start` (ver README
  * da suíte / playwright.config.ts).
  */
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./helpers/test";
+import { DEFAULT_APP_NAME } from "@/lib/branding";
 
 import { waitForEmail, extractAuthConfirmLink, uniqueEmail } from "./helpers/auth";
 
@@ -43,7 +44,9 @@ test("criar conta: signup → e-mail de confirmação → onboarding → re-logi
 
   // 4. Autenticado no onboarding — tenant provisionado
   await expect(page).toHaveURL(/\/onboarding\/welcome/);
-  await expect(page.getByText("Boas-vindas ao DeskcommCRM")).toBeVisible();
+  // O nome padrão do PRODUTO, e não um literal: numa marca própria (este fork é o
+  // SomaFlow CRM) o boas-vindas diz o nome dela.
+  await expect(page.getByText(`Boas-vindas ao ${DEFAULT_APP_NAME}`)).toBeVisible();
   await expect(page.getByText("Loja E2E Signup")).toBeVisible();
 
   // 5. Sai (limpa sessão) e entra de novo com as credenciais criadas
@@ -51,7 +54,7 @@ test("criar conta: signup → e-mail de confirmação → onboarding → re-logi
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Senha").fill(password);
-  await page.getByRole("button", { name: "Entrar" }).click();
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await page.waitForURL(/\/(app|onboarding)\//, { timeout: 30_000 });
   await expect(page).not.toHaveURL(/\/login/);
 });
