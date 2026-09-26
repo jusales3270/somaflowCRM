@@ -6,7 +6,6 @@
  * dados representativos para o SomaFlow CRM.
  */
 
-import { PROVIDERS_DE_MENSAGEM } from "@/lib/channels/capabilities";
 
 export function isDevSupabaseFallbackActive(): boolean {
   if (process.env.NODE_ENV !== "development") return false;
@@ -269,9 +268,10 @@ const DEMO_DATA: Record<string, Record<string, unknown>[]> = {
     {
       id: "chan-01",
       organization_id: ORG_ID,
-      // O provider vem da lista canônica (doutrina de restrição de canal):
-      // dado de demonstração não nomeia provider fora de lib/channels/.
-      channel_type: PROVIDERS_DE_MENSAGEM[0],
+      // Sem `channel_type` de propósito: nomear o provider aqui fere a restrição
+      // de canal (lint:channels), e importá-lo de lib/channels/ puxaria o módulo
+      // de canais para o alcance de tudo que usa o cliente admin — inclusive o
+      // Jev (cerca jev-nunca-cala-bloqueia-nem-responde). Dado de demonstração.
       name: "WhatsApp Comercial SomaFlow",
       status: "CONNECTED",
       phone_number: "+55 11 98888-7777",

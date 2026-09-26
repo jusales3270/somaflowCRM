@@ -61,8 +61,10 @@ export function PublicAuthShell({ marca, logoGrande, logoPequeno, children }: Pu
           {/* Logo com animação pulsante entre as ondas */}
           <div className="somaflow-pulse-logo flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
             {logoGrande ?? (
+              // Sem `data-testid="logo-da-fachada"`: isto é o NOME em texto, não o
+              // logo do operador — marcado, ele sumia ao abrir o cartão e o e2e
+              // (marca-logo, caso 6) lia um "logo" que não existe.
               <span
-                data-testid="logo-da-fachada"
                 className="text-4xl font-bold tracking-tight text-white drop-shadow-[0_10px_20px_rgba(0,162,245,0.5)]"
               >
                 {marca.nome}

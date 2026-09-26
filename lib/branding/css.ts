@@ -159,14 +159,17 @@ function declaracoesDoTema(cor: CorResolvida, tema: "claro" | "escuro"): Declara
   // preço que `--color-accent-soft` já pagava sozinho, e é o que a caminhada
   // sempre significou. Com d=0 — a Sage e toda marca que já cabe — a saída é
   // idêntica à de antes, byte a byte.
-  // Quando a semente é a marca do SomaFlow (#00a2f5), o tom vibrante exato da logo
-  // é preservado diretamente como o accent do produto sem escurecer para azul marinho (#195074).
+  // SomaFlow: com a semente #00a2f5, a derivação do produto escureceria o accent até
+  // o azul-marinho #195074. Em vez disso, o accent do tema claro é o MESMO matiz da
+  // logo escurecido só até caber no piso de texto branco: #0079b8 (4,74:1) e hover
+  // #00679c (6,14:1). O #00a2f5 puro com texto branco dava 2,8:1 (axe: color-contrast,
+  // mínimo 4,5:1). A rampa segue o deslocamento do produto, para todo papel caber no piso.
   const isSomaFlow = cor.semente.toLowerCase() === "#00a2f5";
-  const deslocamento = isSomaFlow && tema === "claro" ? 0 : t.deslocamento;
-  const accentCor = isSomaFlow && tema === "claro" ? "#00a2f5" : t.accent;
+  const deslocamento = t.deslocamento;
+  const accentCor = isSomaFlow && tema === "claro" ? "#0079b8" : t.accent;
   const accentFg = isSomaFlow && tema === "claro" ? "#ffffff" : t.accentFg;
-  const accentHover = isSomaFlow && tema === "claro" ? "#0090dc" : t.accentHover;
-  const accentSoft = isSomaFlow && tema === "claro" ? "rgba(0, 162, 245, 0.15)" : t.accentSoft;
+  const accentHover = isSomaFlow && tema === "claro" ? "#00679c" : t.accentHover;
+  const accentSoft = isSomaFlow && tema === "claro" ? "rgba(0, 121, 184, 0.15)" : t.accentSoft;
 
   for (const [i, grau] of GRAUS.entries()) {
     saida.push([`--color-accent-${grau}`, stop(derivada.rampa, i + deslocamento)]);
