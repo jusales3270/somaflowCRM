@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { X } from "@/lib/ui/icons";
+import { useT } from "@/hooks/i18n/useT";
 
 interface PublicAuthShellProps {
   marca: {
@@ -13,6 +14,7 @@ interface PublicAuthShellProps {
 }
 
 export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
+  const t = useT();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -21,15 +23,14 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
   const isDedicatedSubpage = pathname !== "/login";
   const hasQueryParams = searchParams?.has("error") || searchParams?.has("reset");
 
-  const [aberto, setAberto] = useState<boolean>(() => {
-    if (isDedicatedSubpage || hasQueryParams) return true;
-    // Em testes automatizados via headless (Playwright/CI), mantemos aberto para preenchimento direto
-    if (typeof window !== "undefined" && window.navigator?.webdriver) return true;
-    return false;
-  });
+  // O estado inicial depende só da URL — o servidor e a primeira passada do
+  // cliente precisam concordar (ler `window` aqui divergia na hidratação).
+  const [aberto, setAberto] = useState<boolean>(isDedicatedSubpage || Boolean(hasQueryParams));
 
   useEffect(() => {
-    if (isDedicatedSubpage || hasQueryParams) {
+    // Em testes automatizados via headless (Playwright/CI), o formulário abre
+    // direto para preenchimento — lido só no navegador, depois da hidratação.
+    if (isDedicatedSubpage || hasQueryParams || window.navigator?.webdriver) {
       setAberto(true);
     }
   }, [isDedicatedSubpage, hasQueryParams]);
@@ -41,7 +42,7 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
         <button
           type="button"
           onClick={() => setAberto(true)}
-          aria-label="Clique para entrar no CRM"
+          aria-label={t("Clique para entrar no CRM")}
           className="group relative flex flex-col items-center cursor-pointer select-none rounded-3xl p-6 transition-transform duration-300 hover:scale-105 active:scale-95 focus:outline-hidden"
         >
           {/* Brilho e reflexo sutil contido sob a logo, mantendo os prints nítidos */}
@@ -81,7 +82,7 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00a2f5] opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#00a2f5]"></span>
               </span>
-              <span>Clique para entrar</span>
+              <span>{t("Clique para entrar")}</span>
             </div>
           </div>
         </button>
@@ -97,8 +98,8 @@ export function PublicAuthShell({ marca, children }: PublicAuthShellProps) {
           type="button"
           onClick={() => setAberto(false)}
           className="absolute top-4 right-4 rounded-full p-1.5 text-muted-foreground hover:bg-surface-elevated hover:text-foreground transition-colors"
-          title="Fechar formulário"
-          aria-label="Voltar para a animação da logo"
+          title={t("Fechar formulário")}
+          aria-label={t("Voltar para a animação da logo")}
         >
           <X size={16} aria-hidden />
         </button>

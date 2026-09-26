@@ -12135,6 +12135,11 @@ export const DICIONARIO: Traducoes = {
     es: "El ritmo se ajusta en la propia pantalla de la campaña, sin descartar nada.",
   },
   "Voltar para a campanha": { es: "Volver a la campaña" },
+  // Tela de entrada do SomaFlow (components/auth/PublicAuthShell.tsx).
+  "Clique para entrar no CRM": { es: "Haz clic para entrar al CRM" },
+  "Clique para entrar": { es: "Haz clic para entrar" },
+  "Fechar formulário": { es: "Cerrar formulario" },
+  "Voltar para a animação da logo": { es: "Volver a la animación del logo" },
   "funil removido": { es: "embudo eliminado" },
   "agente indisponível": { es: "agente no disponible" },
   "Agente publicado no número (padrão)": { es: "Agente publicado en el número (predeterminado)" },

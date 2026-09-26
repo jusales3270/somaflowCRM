@@ -131,36 +131,44 @@ export function SidebarContent({
         )}
       >
         {(logo || logoEscuro) && !collapsed ? (
-          // SomaFlow: logo + "CRM" ao lado, sem o fundo branco de contraste do
-          // upstream no escuro (o "CRM" em zinc-200 ficaria ilegível sobre ele).
+          // SomaFlow: logo + "CRM" ao lado. A proteção de contraste do upstream
+          // (chip claro no escuro, quando não há arte para o escuro) envolve SÓ o
+          // logo: o "CRM" em zinc-200 ficaria ilegível sobre o chip branco.
           <div className="flex items-center gap-2">
-            {/* <img> em vez de next/image de propósito: a URL vem de quem hospeda
+            <div
+              className={cn(
+                "rounded-md",
+                !logoEscuro && "dark:bg-white dark:px-2 dark:py-1 dark:shadow-sm",
+              )}
+            >
+              {/* <img> em vez de next/image de propósito: a URL vem de quem hospeda
               (banco ou .env), e next/image exige allowlist de domínios fechada em
               build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
               Altura fixa e largura livre porque a arte enviada tem proporção
               desconhecida; forçar as duas distorceria o logo de quem configurou. */}
-            {logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logo}
-                alt={nome}
-                className={cn(
-                  "h-[36px] w-auto max-w-[9.5rem] object-contain",
-                  logoEscuro && "dark:hidden",
-                )}
-              />
-            ) : (
-              <span className="dark:hidden">{nome}</span>
-            )}
-            {logoEscuro ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={logoEscuro}
-                alt={nome}
-                className="hidden h-[36px] w-auto max-w-[9.5rem] object-contain dark:block"
-              />
-            ) : null}
-            <span className="text-[21px] font-normal tracking-normal leading-none text-zinc-700 dark:text-zinc-200 select-none translate-y-[4px]">
+              {logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={logo}
+                  alt={nome}
+                  className={cn(
+                    "h-[36px] w-auto max-w-[9.5rem] object-contain",
+                    logoEscuro && "dark:hidden",
+                  )}
+                />
+              ) : (
+                <span className="dark:hidden">{nome}</span>
+              )}
+              {logoEscuro ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={logoEscuro}
+                  alt={nome}
+                  className="hidden h-[36px] w-auto max-w-[9.5rem] object-contain dark:block"
+                />
+              ) : null}
+            </div>
+            <span className="translate-y-[4px] text-[21px] leading-none font-normal tracking-normal text-zinc-700 select-none dark:text-zinc-200">
               CRM
             </span>
           </div>
