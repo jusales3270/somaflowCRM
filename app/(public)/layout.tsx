@@ -40,9 +40,8 @@ import type { MarcaDeSaida } from "@/lib/branding/saida";
 
 /**
  * O logo do operador, montado AQUI e entregue pronto ao `PublicAuthShell` (que só
- * o posiciona e anima). Sem arte própria para o escuro, ele fica sobre um chip
- * claro no tema escuro — sem isso, um logo de traço escuro (o do SomaFlow tem o
- * "Soma" em cinza) some no fundo. Vigiado por `logo-nao-some-no-tema-escuro`.
+ * o posiciona e anima). SomaFlow: sem o chip claro do upstream no tema escuro —
+ * decisão de marca do dono do produto; o logo fica direto sobre o fundo.
  *
  * `<img>` em vez de next/image: a URL é de quem hospeda, e o `next/image` exige
  * allowlist de domínios fechada em BUILD — a imagem pré-buildada recusaria o
@@ -52,13 +51,7 @@ import type { MarcaDeSaida } from "@/lib/branding/saida";
 function logoDaFachada(marca: MarcaDeSaida, tamanho: string): React.ReactNode {
   if (!marca.logoUrl && !marca.logoDarkUrl) return null;
   return (
-    <div
-      className={
-        marca.logoDarkUrl
-          ? "rounded-md"
-          : "rounded-md dark:bg-white dark:px-3 dark:py-2 dark:shadow-sm"
-      }
-    >
+    <div>
       {marca.logoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img

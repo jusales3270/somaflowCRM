@@ -131,16 +131,11 @@ export function SidebarContent({
         )}
       >
         {(logo || logoEscuro) && !collapsed ? (
-          // SomaFlow: logo + "CRM" ao lado. A proteção de contraste do upstream
-          // (chip claro no escuro, quando não há arte para o escuro) envolve SÓ o
-          // logo: o "CRM" em zinc-200 ficaria ilegível sobre o chip branco.
+          // SomaFlow: logo + "CRM" ao lado, SEM o chip claro que o upstream põe
+          // atrás do logo no tema escuro — decisão de marca do dono do produto
+          // (o logo SomaFlow é desenhado para ficar direto sobre o fundo).
           <div className="flex items-center gap-2">
-            <div
-              className={cn(
-                "rounded-md",
-                !logoEscuro && "dark:bg-white dark:px-2 dark:py-1 dark:shadow-sm",
-              )}
-            >
+            <div>
               {/* <img> em vez de next/image de propósito: a URL vem de quem hospeda
               (banco ou .env), e next/image exige allowlist de domínios fechada em
               build — a imagem pré-buildada rejeitaria o domínio do self-hoster.

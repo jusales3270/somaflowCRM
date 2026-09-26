@@ -427,15 +427,10 @@ export function CampoDeLogo({
                 style={{ backgroundColor: fundo }}
               >
                 {(rotulo === t("Aparência escura") ? escuroEmVigor || emVigor : emVigor) ? (
-                  // A arte específica dispensa a moldura; o logo único conserva
-                  // a proteção do #659. A prévia simula ambos os temas lado a lado.
-                  <span
-                    className={
-                      rotulo === t("Aparência escura") && !escuroEmVigor
-                        ? "rounded-md bg-white px-2 py-1 shadow-sm"
-                        : undefined
-                    }
-                  >
+                  // SomaFlow: a prévia do escuro mostra o logo direto sobre o fundo,
+                  // igual ao app (o chip claro do upstream foi retirado por decisão
+                  // de marca). A prévia simula ambos os temas lado a lado.
+                  <span>
                     {/* <img> e não next/image pelo mesmo motivo da barra lateral e da
                       tela de acesso: a URL é do projeto de quem hospeda, e
                       `next/image` exige allowlist de domínios fechada em BUILD — a
