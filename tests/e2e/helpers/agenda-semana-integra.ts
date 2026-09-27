@@ -280,10 +280,18 @@ export async function escolherDiaDesenhado(page: Page, dias: readonly string[]):
   let candidatos = await disponiveis();
   if (candidatos.length === 0) {
     await page.getByTestId("mes-seguinte").click();
-    await expect(
-      page.locator('[data-testid^="dia-"][data-disponivel="true"]').first(),
-      "nem o mês seguinte oferece dia — a consulta deveria ter pedido o mês visível",
-    ).toBeVisible({ timeout: 20_000 });
+    // Espera um dia DA SEMANA ALVO ficar disponível — e não "algum dia": logo
+    // depois do clique os dias do mês anterior ainda estão na tela, e um
+    // `.first().toBeVisible()` passava na hora, lendo `disponiveis()` antes de a
+    // consulta do mês novo responder. Medido num domingo 27/09 (semana alvo
+    // 04–10/10, inteira no mês seguinte): o CI caía em "nenhum dia da semana
+    // desenhada" com o painel ainda em setembro.
+    await expect
+      .poll(disponiveis, {
+        message: "nem o mês seguinte oferece dia da semana desenhada — a consulta deveria ter pedido o mês visível",
+        timeout: 20_000,
+      })
+      .not.toHaveLength(0);
     candidatos = await disponiveis();
   }
 
