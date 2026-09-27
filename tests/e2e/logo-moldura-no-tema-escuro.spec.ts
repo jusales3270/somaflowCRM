@@ -649,8 +649,12 @@ test.describe("a moldura do logo no tema escuro", () => {
       "src",
       urlClara!,
     );
+    // SomaFlow: o logo padrão volta à prévia escura SEM o chip claro do upstream
+    // (decisão de marca do dono do produto, 2026-09-26).
     expect(
-      fundoEClaro((await medirMoldura(page.locator("[data-previa-do-logo='escuro'] img"))).fundo),
+      fundoETransparente(
+        (await medirMoldura(page.locator("[data-previa-do-logo='escuro'] img"))).fundo,
+      ),
     ).toBe(true);
     await page.reload();
     await expect(page.locator("[data-previa-do-logo='claro'] img")).toHaveAttribute(
