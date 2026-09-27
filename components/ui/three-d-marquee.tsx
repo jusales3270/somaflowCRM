@@ -1,6 +1,5 @@
 'use client'
 
-import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
 
 interface ThreeDMarqueeProps {
@@ -37,6 +36,24 @@ export function ThreeDMarquee({ className }: ThreeDMarqueeProps) {
         className
       )}
     >
+      <style>{`
+        @keyframes somaflow-marquee-down {
+          0% {
+            transform: translateY(-33.3333%);
+          }
+          100% {
+            transform: translateY(0%);
+          }
+        }
+        @keyframes somaflow-marquee-up {
+          0% {
+            transform: translateY(0%);
+          }
+          100% {
+            transform: translateY(-33.3333%);
+          }
+        }
+      `}</style>
       {/* Container amplo com perspectiva 3D isométrica diagonal (estilo referência) */}
       <div className='relative w-[170vw] min-w-[1500px] h-[180vh] flex items-center justify-center overflow-hidden'>
         <div
@@ -47,9 +64,9 @@ export function ThreeDMarquee({ className }: ThreeDMarqueeProps) {
           className='w-full grid grid-cols-4 gap-7 md:gap-9 justify-center items-center'
         >
           {columnsData.map((columnImages, colIndex) => {
-            // Scrolling alternado entre as 4 filas com velocidade 20% menor (mais sereno e contemplativo)
+            // Scrolling alternado entre as 4 filas com CSS Keyframes no compositor GPU
             const isScrollDown = colIndex % 2 === 0
-            const duration = 43 + (colIndex % 2) * 6
+            const duration = 22 + colIndex * 3
 
             return (
               <div
@@ -57,17 +74,12 @@ export function ThreeDMarquee({ className }: ThreeDMarqueeProps) {
                 className='relative flex flex-col items-center overflow-hidden'
                 style={{ transformStyle: 'preserve-3d' }}
               >
-                <motion.div
-                  animate={{
-                    y: isScrollDown ? ['-33.333%', '0%'] : ['0%', '-33.333%'],
-                  }}
-                  transition={{
-                    duration,
-                    repeat: Infinity,
-                    ease: 'linear',
-                  }}
+                <div
                   className='flex flex-col gap-7 md:gap-9 will-change-transform w-full'
-                  style={{ transformStyle: 'preserve-3d' }}
+                  style={{
+                    transformStyle: 'preserve-3d',
+                    animation: `${isScrollDown ? 'somaflow-marquee-down' : 'somaflow-marquee-up'} ${duration}s linear infinite`,
+                  }}
                 >
                   {columnImages.map((src, imgIdx) => (
                     <div
@@ -100,7 +112,7 @@ export function ThreeDMarquee({ className }: ThreeDMarqueeProps) {
                       />
                     </div>
                   ))}
-                </motion.div>
+                </div>
               </div>
             )
           })}
@@ -109,5 +121,3 @@ export function ThreeDMarquee({ className }: ThreeDMarqueeProps) {
     </div>
   )
 }
-
-export default ThreeDMarquee

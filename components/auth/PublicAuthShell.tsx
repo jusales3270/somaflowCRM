@@ -26,9 +26,7 @@ export function PublicAuthShell({ marca, logoGrande, logoPequeno, children }: Pu
   const isDedicatedSubpage = pathname !== "/login";
   const hasQueryParams = searchParams?.has("error") || searchParams?.has("reset");
 
-  // O estado inicial depende só da URL — o servidor e a primeira passada do
-  // cliente precisam concordar (ler `window` aqui divergia na hidratação).
-  const [aberto, setAberto] = useState<boolean>(isDedicatedSubpage || Boolean(hasQueryParams));
+  const [aberto, setAberto] = useState<boolean>(true);
 
   useEffect(() => {
     // Em testes automatizados via headless (Playwright/CI), o formulário abre
