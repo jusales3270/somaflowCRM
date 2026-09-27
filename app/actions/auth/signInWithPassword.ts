@@ -42,26 +42,6 @@ export async function signInWithPassword(input: LoginInput, next?: string): Prom
     };
   }
 
-  if (process.env.NODE_ENV === "development") {
-    const emailNorm = parsed.data.email.trim().toLowerCase();
-    if (emailNorm === "admin@somaflow.com" && parsed.data.password === "admin1234") {
-      const cookieStore = await cookies();
-      cookieStore.set("somaflow_dev_session", "authenticated", {
-        path: "/",
-        sameSite: "strict",
-        httpOnly: true,
-        maxAge: 60 * 60 * 24 * 7,
-      });
-      cookieStore.set("active_org", "00000000-0000-4000-8000-000000000002", {
-        path: "/",
-        sameSite: "strict",
-        httpOnly: true,
-        maxAge: 60 * 60 * 24 * 7,
-      });
-      redirect(safeNext(next, "/app/inbox"));
-    }
-    return { ok: false, error: "invalid_credentials" };
-  }
 
   const supabase = await createClient();
   const hdrs = await headers();
@@ -73,8 +53,9 @@ export async function signInWithPassword(input: LoginInput, next?: string): Prom
   // ilimitado (issue #64). Conta por IP e por conta — o ataque distribuído
   // contra um e-mail só não aparece na contagem por IP.
   if (
-    (await authRateLimited("login", null, AUTH_LIMITS.login)) ||
-    (await contaBloqueadaPorFalhas(parsed.data.email, AUTH_LIMITS.login))
+    process.env.NODE_ENV !== "development" &&
+    ((await authRateLimited("login", null, AUTH_LIMITS.login)) ||
+      (await contaBloqueadaPorFalhas(parsed.data.email, AUTH_LIMITS.login)))
   ) {
     await audit({
       action: "auth.login_rate_limited",

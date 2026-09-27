@@ -10,6 +10,7 @@ import { loginSchema, type LoginInput } from "@/lib/auth/schemas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { safeNext } from "@/lib/auth/safe-next";
 import { signInWithPassword } from "@/app/actions/auth/signInWithPassword";
 
 export function LoginForm({ next }: { next?: string }) {
@@ -17,6 +18,8 @@ export function LoginForm({ next }: { next?: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
+
+  const targetPath = safeNext(next, "/app");
 
   const {
     register,
@@ -32,10 +35,10 @@ export function LoginForm({ next }: { next?: string }) {
     startTransition(async () => {
       // Server Action redirects on success — no return value reaches here.
       // On failure, an error discriminator is returned and rendered inline.
-      const res = await signInWithPassword(values, next);
+      const res = await signInWithPassword(values, targetPath);
       if (!res) {
         // Should be unreachable (redirect throws), but guard anyway.
-        router.replace(next || "/app");
+        router.replace(targetPath);
         return;
       }
       if (res.error === "mfa_required") {
@@ -58,7 +61,18 @@ export function LoginForm({ next }: { next?: string }) {
   };
 
   return (
-    <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+    <form
+      // `method="post"` fica mesmo com o preventDefault abaixo: se o bundle não
+      // carregar, o submit nativo iria por GET e poria e-mail e senha na URL
+      // (histórico, log, Referer). Cerca: credencial-nunca-na-url.
+      method="post"
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleSubmit(onSubmit)(e);
+      }}
+      className="space-y-4"
+      noValidate
+    >
       <div className="space-y-1.5">
         <Label htmlFor="email">{t("Email")}</Label>
         <Input

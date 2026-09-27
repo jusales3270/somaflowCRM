@@ -23,6 +23,9 @@ export function safeNext(next: string | undefined | null, fallback: string): str
   // "javascript:...", "data:..." e qualquer coisa com esquema.
   if (!next.startsWith("/")) return fallback;
 
+  // Endpoints internos do Sentry (/monitoring) ou APIs nunca são telas de destino pós-login.
+  if (next.startsWith("/monitoring") || next.startsWith("/api/")) return fallback;
+
   // "//host" e "/\host" são protocol-relative: o browser sai do site.
   if (next.startsWith("//") || next.startsWith("/\\")) return fallback;
 

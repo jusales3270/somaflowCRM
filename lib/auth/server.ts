@@ -131,7 +131,7 @@ export const DEV_MOCK_USER: AuthUser = {
  * volume de tráfego anônimo.
  *
  * Compara por `name` e não por `instanceof`: há DUAS cópias de `@supabase/auth-js`
- * na árvore (2.111.0 e 2.112.1 em `node_modules/.pnpm`), e `instanceof` só acerta
+ * na árvore (2.111.0 e 2.112.1 in `node_modules/.pnpm`), e `instanceof` só acerta
  * quando o erro vem da mesma cópia que o teste importou.
  */
 export function ehSessaoAusente(error: { name?: string } | null | undefined): boolean {
@@ -139,13 +139,6 @@ export function ehSessaoAusente(error: { name?: string } | null | undefined): bo
 }
 
 export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
-  if (process.env.NODE_ENV === "development") {
-    const store = await cookies();
-    if (store.get("somaflow_dev_session")?.value === "authenticated") {
-      return DEV_MOCK_USER;
-    }
-  }
-
   const supabase = await createClient();
   const {
     data: { user },
@@ -190,12 +183,6 @@ export const loadAuthUser = cache(async (): Promise<AuthUser | null> => {
   }
 
   if (!user) {
-    if (process.env.NODE_ENV === "development") {
-      const store = await cookies();
-      if (store.get("somaflow_dev_session")?.value === "authenticated") {
-        return DEV_MOCK_USER;
-      }
-    }
     return null;
   }
 

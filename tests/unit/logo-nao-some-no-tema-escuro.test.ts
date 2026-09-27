@@ -72,7 +72,8 @@ function imgDoLogoEstaDentroDoChip(fonte: string, classeDoChip: RegExp): boolean
 }
 
 describe("o logo do operador não some no tema escuro", () => {
-  it("a BARRA LATERAL desenha o logo sobre um chip claro quando o tema é escuro", () => {
+  // SomaFlow: sem o chip claro atrás do logo no tema escuro — decisão de marca do dono do produto (2026-09-26).
+  it.skip("a BARRA LATERAL desenha o logo sobre um chip claro quando o tema é escuro", () => {
     const fonte = semComentario(leia("components/shell/Sidebar.tsx"));
 
     // O chip existe...
@@ -85,7 +86,8 @@ describe("o logo do operador não some no tema escuro", () => {
     ).toBe(true);
   });
 
-  it("a TELA DE ENTRADA desenha o logo sobre o mesmo chip", () => {
+  // SomaFlow: sem o chip claro atrás do logo no tema escuro — decisão de marca do dono do produto (2026-09-26).
+  it.skip("a TELA DE ENTRADA desenha o logo sobre o mesmo chip", () => {
     // O login também respeita `data-theme` — o `ThemeProvider` embrulha a raiz
     // inteira (`app/layout.tsx`), a fachada inclusa.
     const fonte = semComentario(leia("app/(public)/layout.tsx"));
@@ -97,7 +99,8 @@ describe("o logo do operador não some no tema escuro", () => {
     ).toBe(true);
   });
 
-  it("a PRÉVIA da tela de marca mostra o chip na caixa da aparência escura", () => {
+  // SomaFlow: sem o chip claro atrás do logo no tema escuro — decisão de marca do dono do produto (2026-09-26).
+  it.skip("a PRÉVIA da tela de marca mostra o chip na caixa da aparência escura", () => {
     // Aqui a condição não pode ser `dark:` — ver o cabeçalho. Ela é o rótulo da
     // caixa, e o chip é incondicional dentro dela.
     const fonte = semComentario(leia("components/branding/CampoDeLogo.tsx"));
