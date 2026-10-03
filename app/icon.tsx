@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ImageResponse } from "next/og";
 
-import { marcaEhADoProduto } from "@/lib/branding";
+import { marcaEhADoProduto, marcaEhAPadraoDaDistribuicao } from "@/lib/branding";
 import { CORES_DA_MARCA, SIMBOLO } from "@/lib/branding/desenho";
 import { letraDoIcone } from "@/lib/branding/icone";
 import { marcaDaSaida, NEUTROS_DE_SAIDA } from "@/lib/branding/saida";
@@ -47,6 +47,18 @@ import { marcaDaSaida, NEUTROS_DE_SAIDA } from "@/lib/branding/saida";
  * Quem configurou um nome próprio segue com cor + inicial: o símbolo soletra
  * "D", e um "D" na aba de quem se chama "Acme" seria a nossa marca vazando.
  *
+ * ─── O ícone da DISTRIBUIÇÃO (SomaFlow), e só enquanto a marca for a dela ───
+ *
+ * Esta distribuição carrega o ícone dela em `public/icon.png` — a marca padrão
+ * do fork. Ele só vale para a marca padrão (`marcaEhAPadraoDaDistribuicao`): o
+ * revendedor que trocou o nome ou subiu o logo recebe cor + inicial, como
+ * qualquer instalação. A versão anterior devolvia o arquivo SEMPRE, e foi
+ * exatamente o modo de falha do parágrafo "Por que GERADO" acima, só que com a
+ * marca do SomaFlow no lugar da do produto original. O CI não pegava: a spec
+ * do ícone só exige uma imagem PNG, nunca que ela acompanhe a marca.
+ * `/favicon.ico` redireciona para cá (`next.config.ts`) em vez de existir como
+ * arquivo, pelo mesmo motivo.
+ *
  * ─── `force-dynamic` não é zelo ─────────────────────────────────────────────
  *
  * O loader de metadata NÃO injeta `force-static` na variante gerada por código
@@ -80,15 +92,13 @@ export const contentType = "image/png";
 export default async function Icon() {
   const marca = await marcaDaSaida(null);
 
-  const iconFilePath = path.join(process.cwd(), "public/icon.png");
-  if (fs.existsSync(iconFilePath)) {
-    const fileBuffer = fs.readFileSync(iconFilePath);
-    return new Response(fileBuffer, {
-      headers: {
-        "content-type": "image/png",
-        "cache-control": "public, max-age=60, stale-while-revalidate=600",
-      },
-    });
+  if (marcaEhAPadraoDaDistribuicao({ name: marca.nome, logoUrl: marca.logoUrl })) {
+    const arquivo = lerIconeDaDistribuicao();
+    if (arquivo) {
+      return new Response(arquivo, {
+        headers: { "content-type": "image/png", ...CACHE },
+      });
+    }
   }
 
   if (marcaEhADoProduto({ name: marca.nome, logoUrl: marca.logoUrl })) {
@@ -152,3 +162,17 @@ export default async function Icon() {
 // ano tornaria a tela de marca uma promessa que o ícone não cumpre; `no-store`
 // faria o satori rodar a cada navegação.
 const CACHE = { "cache-control": "public, max-age=60, stale-while-revalidate=600" };
+
+/**
+ * O arquivo do ícone da distribuição, ou `null` se não puder ser lido. Nunca
+ * lança: a aba sem o arquivo cai para o ícone desenhado, e um throw aqui seria
+ * 500 em todo `<head>`. `readFileSync` direto e não `existsSync` + leitura: são
+ * dois passos com uma janela entre eles.
+ */
+function lerIconeDaDistribuicao(): Uint8Array<ArrayBuffer> | null {
+  try {
+    return new Uint8Array(fs.readFileSync(path.join(process.cwd(), "public/icon.png")));
+  } catch {
+    return null;
+  }
+}

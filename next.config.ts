@@ -90,6 +90,14 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "*.supabase.in" },
     ],
   },
+  async redirects() {
+    return [
+      // O navegador (e todo cliente que não lê o <head>) pede /favicon.ico. Um
+      // arquivo estático aqui entregaria a marca do SomaFlow a todo cliente de
+      // revendedor; o redirect faz o pedido cair no `/icon`, que acompanha a marca.
+      { source: "/favicon.ico", destination: "/icon", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {
