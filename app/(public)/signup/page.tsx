@@ -3,7 +3,7 @@ import Link from "next/link";
 import { EntrarComGoogle } from "@/components/auth/EntrarComGoogle";
 import { SignupForm } from "@/components/auth/SignupForm";
 import { Button } from "@/components/ui/button";
-import { branding } from "@/lib/branding";
+import { marcaDaSaida } from "@/lib/branding/saida";
 import { verifyInviteToken } from "@/lib/auth/invite-token";
 import { modoDeCadastro } from "@/lib/auth/politica-de-cadastro";
 import { createClient } from "@/lib/supabase/server";
@@ -40,6 +40,9 @@ export default async function SignupPage({
   searchParams: Promise<{ invite?: string }>;
 }) {
   const { invite } = await searchParams;
+  // O nome vem da marca RESOLVIDA (banco acima do .env): quem troca o nome em Admin › Marca
+  // tem de vê-lo aqui, e `branding()` lê só o .env.
+  const marca = await marcaDaSaida(null);
   const payload = invite ? verifyInviteToken(invite) : null;
   const convite = invite && payload ? { token: invite, email: payload.email } : undefined;
   const conviteExpirado = Boolean(invite) && !payload;
@@ -88,7 +91,7 @@ export default async function SignupPage({
         <p className="text-sm text-muted-foreground">
           {convite
             ? t("Crie sua senha para entrar na empresa que te convidou")
-            : `${t("Comece a usar o")} ${branding().name} ${t("em minutos")}`}
+            : `${t("Comece a usar o")} ${marca.nome} ${t("em minutos")}`}
         </p>
         {modo === "com_aprovacao" && (
           <p className="text-sm text-muted-foreground">

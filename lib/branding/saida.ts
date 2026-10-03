@@ -114,6 +114,18 @@ export const NEUTROS_DE_SAIDA = {
   linha: stop(REGUA_DO_PRODUTO.claro.neutros, 2),
 } as const;
 
+/**
+ * O logo como o e-mail pode usá-lo: só URL ABSOLUTA http(s).
+ *
+ * O e-mail é aberto fora do app, então um caminho do próprio servidor
+ * (`/logo.png`, o logo padrão desta distribuição) não resolve em lugar nenhum e
+ * vira o ícone de imagem quebrada no topo do primeiro e-mail que a pessoa recebe.
+ * Nesse caso, e-mail sem logo — o nome em texto já está lá.
+ */
+export function logoParaEmail(logoUrl: string | null): string | null {
+  return logoUrl !== null && /^https?:\/\//i.test(logoUrl) ? logoUrl : null;
+}
+
 /** O que sobra quando nada pôde ser lido. Uma instalação funcionando. */
 function padraoDoProduto(): MarcaDeSaida {
   return {

@@ -15,7 +15,7 @@
  * arte de ninguém é meia marca; e este é o e-mail que a pessoa abre antes de
  * ter visto qualquer tela do produto.
  */
-import { NEUTROS_DE_SAIDA, type MarcaDeSaida } from "@/lib/branding/saida";
+import { logoParaEmail, NEUTROS_DE_SAIDA, type MarcaDeSaida } from "@/lib/branding/saida";
 
 export interface InviteEmailOptions {
   inviterName: string;
@@ -55,8 +55,9 @@ export function buildInviteEmail(opts: InviteEmailOptions): {
    * — o cliente de e-mail desenharia o ícone de imagem quebrada no topo do
    * primeiro e-mail que a pessoa recebe do sistema.
    */
-  const logo = opts.marca.logoUrl
-    ? `<p style="margin:0 0 24px"><img src="${escapeHtml(opts.marca.logoUrl)}" alt="${escapeHtml(marca)}" height="40" style="height:40px;width:auto;max-width:200px;border:0;display:block"></p>`
+  const logoSrc = logoParaEmail(opts.marca.logoUrl);
+  const logo = logoSrc
+    ? `<p style="margin:0 0 24px"><img src="${escapeHtml(logoSrc)}" alt="${escapeHtml(marca)}" height="40" style="height:40px;width:auto;max-width:200px;border:0;display:block"></p>`
     : "";
 
   const html = `<!doctype html>

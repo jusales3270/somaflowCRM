@@ -1,4 +1,4 @@
-import { NEUTROS_DE_SAIDA, type MarcaDeSaida } from "@/lib/branding/saida";
+import { logoParaEmail, NEUTROS_DE_SAIDA, type MarcaDeSaida } from "@/lib/branding/saida";
 
 /**
  * Os dois e-mails de ACESSO — confirmar conta e redefinir senha — no formato
@@ -74,8 +74,9 @@ export function montarTemplateDeAcesso(modelo: ModeloDeAcesso, marca: MarcaDeSai
   const t = COPIA[modelo];
   const nome = escapeHtml(marca.nome);
 
-  const logo = marca.logoUrl
-    ? `<p style="margin:0 0 24px"><img src="${escapeHtml(marca.logoUrl)}" alt="${nome}" height="40" style="height:40px;width:auto;max-width:200px;border:0;display:block"></p>`
+  const logoSrc = logoParaEmail(marca.logoUrl);
+  const logo = logoSrc
+    ? `<p style="margin:0 0 24px"><img src="${escapeHtml(logoSrc)}" alt="${nome}" height="40" style="height:40px;width:auto;max-width:200px;border:0;display:block"></p>`
     : "";
 
   // As chaves duplas ficam CRUAS de propósito: o GoTrue as substitui.

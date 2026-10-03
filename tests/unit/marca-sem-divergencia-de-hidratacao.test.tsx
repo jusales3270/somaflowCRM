@@ -232,19 +232,26 @@ describe("catraca: `branding()` é server-only", () => {
     expect(semComentarios(`const nome = branding().name; // usa a marca`)).toMatch(/\bbranding\(\)/);
   });
 
-  it("os call sites REAIS de `branding()` continuam visíveis à varredura", () => {
-    // A guarda contra o erro NOVO que o corte por bloco introduz: se o regex de
-    // `/* … */` engolisse código, esta lista esvaziaria e a catraca ficaria verde
-    // por cegueira — o mesmo defeito que ela existe para impedir, do lado do
-    // instrumento. Estes quatro são servidores e DEVEM chamar `branding()`.
-    const esperados = [
+  it("as telas que mostram o NOME da marca leem a marca RESOLVIDA (banco acima do .env), não só o .env", () => {
+    // `branding()` lê só o `.env`. Quem troca o nome em Admin › Marca precisa vê-lo no
+    // login, no cadastro, nos termos e no onboarding: estas sete leituras eram
+    // `branding().name` e o nome antigo ficava preso a elas (medido no navegador).
+    // O controle de cegueira do regex é o par de fixtures do teste "o corte de
+    // comentário derruba a citação e PRESERVA a chamada", logo acima.
+    const telas = [
       "app/(public)/login/page.tsx",
       "app/(public)/signup/page.tsx",
+      "app/get-started/page.tsx",
+      "app/legal/layout.tsx",
       "app/onboarding/layout.tsx",
+      "app/onboarding/welcome/page.tsx",
       "lib/legal/operador.ts",
     ];
-    const vistos = varridos.filter(chamaBranding).map((f) => relativoEmBarraNormal(RAIZ, f));
-    expect(esperados.filter((e) => !vistos.includes(e))).toEqual([]);
+    for (const rel of telas) {
+      const fonte = semComentarios(fs.readFileSync(path.join(RAIZ, rel), "utf8"));
+      expect(/\bbranding\(\)/.test(fonte), `${rel} ainda lê o nome só do .env`).toBe(false);
+      expect(/\bmarcaDaSaida\(/.test(fonte), `${rel} não lê a marca resolvida`).toBe(true);
+    }
   });
 
   it("nenhum componente `\"use client\"` chama `branding()`", () => {

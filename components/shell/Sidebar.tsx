@@ -10,7 +10,7 @@ import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
 import { VersionFooter } from "@/components/shell/VersionFooter";
 import { LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
-import { marcaEhADoProduto } from "@/lib/branding";
+import { DEFAULT_LOGO_URL, marcaEhADoProduto } from "@/lib/branding";
 import { useMarcaDaInstalacao } from "@/lib/branding/contexto";
 import { GRUPO_NO_RODAPE, sidebarGroups } from "@/lib/navigation/registry";
 
@@ -163,9 +163,14 @@ export function SidebarContent({
                 />
               ) : null}
             </div>
-            <span className="translate-y-[4px] text-[21px] leading-none font-normal tracking-normal text-zinc-700 select-none dark:text-zinc-200">
-              CRM
-            </span>
+            {/* O "CRM" é parte da composição do logo do SomaFlow (o arquivo é só a palavra
+                "SomaFlow"). O logo de uma revenda já é a marca inteira: acrescentar "CRM"
+                ao lado seria texto nosso na marca dela. */}
+            {logo === DEFAULT_LOGO_URL && (
+              <span className="translate-y-[4px] text-[21px] leading-none font-normal tracking-normal text-zinc-700 select-none dark:text-zinc-200">
+                CRM
+              </span>
+            )}
           </div>
         ) : marcaDoProduto ? (
           // O desenho do produto, inline (ver `components/branding/MarcaDoProduto.tsx`):

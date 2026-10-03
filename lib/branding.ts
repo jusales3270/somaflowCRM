@@ -46,7 +46,18 @@ export function resolveBranding(
   const resolvedLogo = (logoUrl ?? "").trim();
   return {
     name: resolvedName,
-    logoUrl: resolvedLogo.length > 0 ? resolvedLogo : null,
+    // Nome padrão SEM logo configurado é a marca padrão da distribuição, e ela TEM
+    // logo (`DEFAULT_LOGO_URL`). Devolver `null` aqui fazia uma instalação nova —
+    // cujo `.env` não traz `APP_LOGO_URL` — cair no ramo "marca do produto" e
+    // desenhar o logotipo do projeto original (Deskcomm) na barra lateral, no
+    // painel admin e no onboarding. Quem trocou o NOME e não subiu logo continua
+    // sem logo (`null`): o nome aparece como texto.
+    logoUrl:
+      resolvedLogo.length > 0
+        ? resolvedLogo
+        : resolvedName === DEFAULT_APP_NAME
+          ? DEFAULT_LOGO_URL
+          : null,
     // Spread em vez de [0]: nome começando com emoji ou acento composto quebraria
     // no meio do code point e renderizaria caractere inválido.
     initial: ([...resolvedName][0] ?? DEFAULT_APP_NAME[0]!).toUpperCase(),
@@ -96,8 +107,20 @@ export function resolveBranding(
  * escrita, só pintada de outro jeito.
  */
 export function marcaEhADoProduto(marca: Pick<Branding, "name" | "logoUrl">): boolean {
-  return marca.logoUrl === null && marca.name === DEFAULT_APP_NAME;
+  return DISTRIBUICAO_TEM_ARTE_VETORIAL && marca.logoUrl === null && marca.name === DEFAULT_APP_NAME;
 }
+
+/**
+ * A arte vetorial de `lib/branding/desenho.ts` (símbolo e logotipo) é a do projeto
+ * ORIGINAL — o "D" e o texto "Deskcomm". Esta distribuição (SomaFlow) tem a marca
+ * dela só como imagem (`public/logo.png`), então desenhar aquela arte sob o nome
+ * "SomaFlow CRM" é mostrar a marca de outra empresa ao cliente da revenda.
+ *
+ * `false` desliga o ramo "marca do produto" em toda parte que usa
+ * `marcaEhADoProduto` (barra lateral, painel admin, onboarding, ícone da aba). Vire
+ * para `true` SOMENTE depois de trocar `desenho.ts` pela arte desta distribuição.
+ */
+export const DISTRIBUICAO_TEM_ARTE_VETORIAL = false;
 
 /**
  * A marca em vigor é a PADRÃO desta distribuição: quem opera não trocou nem o
