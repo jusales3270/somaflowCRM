@@ -260,6 +260,28 @@ export const pipelineConfigPatchSchema = z.object({
 export type PipelineConfigPatch = z.infer<typeof pipelineConfigPatchSchema>;
 
 /**
+ * O logo da instalação: URL absoluta OU caminho do próprio servidor (`/logo.png`).
+ *
+ * Aceitar só `.url()` fazia a tela de marca recusar QUALQUER salvamento numa
+ * instalação semeada com `APP_LOGO_URL="/logo.png"` (o valor do `.env.example`
+ * desta distribuição): o formulário devolve o `logo_url` gravado como está, e o
+ * caminho relativo reprovava a validação — "Confira os campos" ao trocar só o
+ * nome, sem dizer qual campo. O que a semeadura grava, o formulário precisa
+ * conseguir devolver.
+ *
+ * O caminho tem de começar por UMA barra: `//host` e `/\host` são URLs relativas
+ * ao protocolo, e sairiam do próprio servidor.
+ */
+const logoUrlDaInstalacao = z.union([
+  z.string().trim().url().max(2048),
+  z
+    .string()
+    .trim()
+    .max(2048)
+    .regex(/^\/(?![/\\])\S*$/, { message: "Use uma URL completa ou um caminho que comece por /" }),
+]);
+
+/**
  * A marca da INSTALAÇÃO (`platform_branding`) — o que a server action aceita.
  *
  * `.nullable()` em cada campo, e não `.optional()`: aqui `null` é um valor com
@@ -274,7 +296,7 @@ export type PipelineConfigPatch = z.infer<typeof pipelineConfigPatchSchema>;
  */
 export const platformBrandingSchema = z.object({
   app_name: z.string().trim().min(1).max(120).nullable(),
-  logo_url: z.string().trim().url().max(2048).nullable(),
+  logo_url: logoUrlDaInstalacao.nullable(),
   accent_hex: z
     .string()
     .trim()
