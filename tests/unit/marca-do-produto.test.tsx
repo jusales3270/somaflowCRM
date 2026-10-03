@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 
 import { Sidebar } from "@/components/shell/Sidebar";
 import { CLASSES_DE_COR, LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
@@ -96,6 +96,17 @@ describe("o desenho na barra lateral", () => {
     expect(logo?.getAttribute("src")).toBe(DEFAULT_LOGO_URL);
     expect(logo?.getAttribute("alt")).toBe(DEFAULT_APP_NAME);
     expect(document.querySelector("svg[role=img]")).toBeNull();
+  });
+
+  it("o 'CRM' ao lado do logo é do SomaFlow: aparece com o logo padrão e NÃO com o logo de uma revenda", () => {
+    // Só o CABEÇALHO do logo: "CRM" também é o título do grupo de menu.
+    const cabecalho = () => within(document.querySelector("div.h-14") as HTMLElement);
+    renderSidebar(resolveBranding(undefined, undefined), false);
+    expect(cabecalho().getByText("CRM")).toBeTruthy();
+    cleanup();
+    renderSidebar(resolveBranding("Acme Vendas", "https://cdn.acme.test/logo.png"), false);
+    expect(document.querySelector("img")?.getAttribute("src")).toBe("https://cdn.acme.test/logo.png");
+    expect(cabecalho().queryByText("CRM")).toBeNull();
   });
 
   it("sem logo e com o nome padrão (estado que o resolvedor não produz mais), cai em texto — e não no desenho", () => {
