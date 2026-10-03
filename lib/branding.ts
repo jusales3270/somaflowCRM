@@ -99,6 +99,26 @@ export function marcaEhADoProduto(marca: Pick<Branding, "name" | "logoUrl">): bo
   return marca.logoUrl === null && marca.name === DEFAULT_APP_NAME;
 }
 
+/**
+ * A marca em vigor é a PADRÃO desta distribuição: quem opera não trocou nem o
+ * nome nem o logo. É só então que os arquivos de marca que a distribuição carrega
+ * em `public/` (hoje, o ícone da aba) podem ser servidos.
+ *
+ * Existe porque a distribuição SomaFlow carrega o ícone dela como arquivo, e o
+ * `/icon` o devolvia SEMPRE — o revendedor trocava nome, cor e logo pela tela, e
+ * o cliente dele seguia vendo a aba do SomaFlow. Esta pergunta separa os dois
+ * casos sem tocar a rede: "sem logo" e "o logo padrão" contam como o padrão (o
+ * `.env` de um clone novo não traz `APP_LOGO_URL`; a instalação semeada traz
+ * `/logo.png`); qualquer outro logo, ou qualquer outro nome, é marca de revenda.
+ * Trocar só a cor não conta — a marca continua a mesma, pintada de outro jeito.
+ */
+export function marcaEhAPadraoDaDistribuicao(marca: Pick<Branding, "name" | "logoUrl">): boolean {
+  return (
+    marca.name === DEFAULT_APP_NAME &&
+    (marca.logoUrl === null || marca.logoUrl === DEFAULT_LOGO_URL)
+  );
+}
+
 export function branding(): Branding {
   if (typeof window !== "undefined") {
     const runtime = window.__PUBLIC_ENV__;
