@@ -3,17 +3,30 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { prefixoDoArquivo } from "@/components/auth/RecoveryCodesPanel";
-import { DEFAULT_APP_NAME, resolveBranding } from "@/lib/branding";
+import { DEFAULT_APP_NAME, DEFAULT_LOGO_URL, resolveBranding } from "@/lib/branding";
 
 const RAIZ = process.cwd();
 
 describe("resolveBranding", () => {
   it("cai no padrão quando não há marca configurada", () => {
+    // A marca padrão desta distribuição TEM logo: um `.env` de instalação nova não traz
+    // `APP_LOGO_URL`, e devolver `null` aqui desenhava o logotipo do projeto original.
     expect(resolveBranding(undefined, undefined)).toEqual({
       name: DEFAULT_APP_NAME,
-      logoUrl: null,
+      logoUrl: DEFAULT_LOGO_URL,
       initial: "S",
     });
+  });
+
+  it("nome próprio SEM logo fica sem logo — o nome aparece como texto, nunca o logo do produto", () => {
+    expect(resolveBranding("Acme CRM", undefined).logoUrl).toBeNull();
+    expect(resolveBranding("Acme CRM", "  ").logoUrl).toBeNull();
+  });
+
+  it("nome padrão com logo próprio usa o logo próprio", () => {
+    expect(resolveBranding(undefined, "https://cdn.acme.test/l.svg").logoUrl).toBe(
+      "https://cdn.acme.test/l.svg",
+    );
   });
 
   it("trata string vazia e só-espaços como ausência de marca", () => {
@@ -22,7 +35,7 @@ describe("resolveBranding", () => {
     // isso como marca válida deixaria a interface sem nome nenhum.
     expect(resolveBranding("", "").name).toBe(DEFAULT_APP_NAME);
     expect(resolveBranding("   ", "   ").name).toBe(DEFAULT_APP_NAME);
-    expect(resolveBranding("   ", "   ").logoUrl).toBeNull();
+    expect(resolveBranding("   ", "   ").logoUrl).toBe(DEFAULT_LOGO_URL);
   });
 
   it("usa a marca configurada e deriva a inicial", () => {

@@ -397,7 +397,7 @@ export function CampoDeLogo({
         </div>
         <p className="text-xs text-text-muted">
           {t(
-            "Use uma versão legível sobre fundo escuro. Ela aparece sem moldura branca. Sem ela, o logo padrão mantém a proteção de contraste. PNG ou JPG, até 512 KB.",
+            "Use uma versão legível sobre fundo escuro. Sem ela, o logo principal também é usado no tema escuro, sem moldura. PNG ou JPG, até 512 KB.",
           )}
         </p>
       </div>

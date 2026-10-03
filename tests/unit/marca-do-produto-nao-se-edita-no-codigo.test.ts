@@ -47,7 +47,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_APP_NAME, resolveBranding } from "@/lib/branding";
+import { DEFAULT_APP_NAME, DEFAULT_LOGO_URL, resolveBranding } from "@/lib/branding";
 
 /**
  * O nome do produto, escrito por extenso e uma única vez. Está aqui, e não
@@ -75,7 +75,7 @@ describe("a marca padrão do produto", () => {
     // manifest do PWA, no favicon, no remetente de e-mail e no issuer do MFA.
     expect(resolveBranding(undefined, undefined), COMO_PERSONALIZAR).toEqual({
       name: MARCA_DO_PRODUTO,
-      logoUrl: null,
+      logoUrl: DEFAULT_LOGO_URL,
       initial: "S",
     });
   });

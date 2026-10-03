@@ -6,7 +6,14 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { CLASSES_DE_COR, LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
 import type { ActiveOrg, AuthUser } from "@/lib/auth/types";
-import { DEFAULT_APP_NAME, marcaEhADoProduto, type Branding } from "@/lib/branding";
+import {
+  DEFAULT_APP_NAME,
+  DEFAULT_LOGO_URL,
+  DISTRIBUICAO_TEM_ARTE_VETORIAL,
+  marcaEhADoProduto,
+  resolveBranding,
+  type Branding,
+} from "@/lib/branding";
 import { MarcaDaInstalacaoProvider } from "@/lib/branding/contexto";
 import { CORES_DA_MARCA } from "@/lib/branding/desenho";
 
@@ -57,8 +64,18 @@ afterEach(() => {
 });
 
 describe("marcaEhADoProduto", () => {
-  it("é verdade só sem logo E com o nome padrão", () => {
-    expect(marcaEhADoProduto(PADRAO)).toBe(true);
+  it("a arte vetorial é a do projeto ORIGINAL: nesta distribuição o ramo está desligado", () => {
+    // `desenho.ts` desenha o "D" e o texto "Deskcomm". Sob o nome "SomaFlow CRM" isso é
+    // mostrar a marca de outra empresa ao cliente da revenda — medido na barra lateral
+    // de uma instalação nova. Só vira `true` depois de trocar a arte.
+    expect(DISTRIBUICAO_TEM_ARTE_VETORIAL).toBe(false);
+    expect(marcaEhADoProduto(PADRAO)).toBe(false);
+  });
+
+  it("a marca padrão que o resolvedor devolve TEM logo — nunca cai no ramo sem logo", () => {
+    const resolvida = resolveBranding(undefined, undefined);
+    expect(resolvida.logoUrl).toBe(DEFAULT_LOGO_URL);
+    expect(marcaEhADoProduto(resolvida)).toBe(false);
   });
 
   it("quem trocou o nome NÃO recebe um logotipo que soletra outro nome", () => {
@@ -73,21 +90,24 @@ describe("marcaEhADoProduto", () => {
 });
 
 describe("o desenho na barra lateral", () => {
-  it("aberta e sem marca própria, mostra o logotipo do produto (SVG, não <img>)", () => {
-    renderSidebar(PADRAO, false);
-    const logotipo = screen.getByRole("img", { name: DEFAULT_APP_NAME });
-    expect(logotipo.tagName.toLowerCase()).toBe("svg");
-    // O e2e `marca-logo.spec.ts` lê "barra sem <img>" como "sem logo do
-    // revendedor"; um <img> do produto aqui faria a spec medir a coisa errada.
-    expect(document.querySelector("img")).toBeNull();
-    // Nem o nome em texto: o logotipo já o escreve.
-    expect(screen.queryByText(DEFAULT_APP_NAME)).toBeNull();
+  it("aberta e com a marca padrão, mostra o LOGO do SomaFlow (imagem) — nenhum desenho do projeto original", () => {
+    renderSidebar(resolveBranding(undefined, undefined), false);
+    const logo = document.querySelector("img");
+    expect(logo?.getAttribute("src")).toBe(DEFAULT_LOGO_URL);
+    expect(logo?.getAttribute("alt")).toBe(DEFAULT_APP_NAME);
+    expect(document.querySelector("svg[role=img]")).toBeNull();
   });
 
-  it("recolhida, mostra só o símbolo — e não a inicial em texto", () => {
-    renderSidebar(PADRAO, true);
-    expect(screen.getByRole("img", { name: DEFAULT_APP_NAME }).tagName.toLowerCase()).toBe("svg");
-    expect(screen.queryByText("D")).toBeNull();
+  it("sem logo e com o nome padrão (estado que o resolvedor não produz mais), cai em texto — e não no desenho", () => {
+    renderSidebar(PADRAO, false);
+    expect(screen.getByText(DEFAULT_APP_NAME)).toBeTruthy();
+    expect(document.querySelector("svg[role=img]")).toBeNull();
+  });
+
+  it("recolhida, mostra a inicial em texto — e nenhum símbolo do projeto original", () => {
+    renderSidebar(resolveBranding(undefined, undefined), true);
+    expect(screen.getByText("S")).toBeTruthy();
+    expect(document.querySelector("svg[role=img]")).toBeNull();
   });
 
   it("com nome da instalação, segue em texto — o desenho do produto não vaza", () => {

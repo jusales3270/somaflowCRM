@@ -14,7 +14,7 @@
  */
 import { env } from "@/lib/env";
 import { valorDaInstalacao } from "@/lib/instalacao/config";
-import { branding } from "@/lib/branding";
+import { marcaDaSaida } from "@/lib/branding/saida";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -70,8 +70,11 @@ export function urlDePoliticaSegura(valor: unknown): string | null {
  * `resolverOperador`, que já era assíncrona — o alcance foi medido antes de
  * mudar a assinatura.
  */
+/** O nome do sistema na marca RESOLVIDA (banco acima do .env). Nunca lança. */
+const nomeDoSistema = async (): Promise<string> => (await marcaDaSaida(null)).nome;
+
 const SEM_SESSAO = async (): Promise<Operador> => ({
-  sistema: branding().name,
+  sistema: await nomeDoSistema(),
   nome: null,
   razaoSocial: null,
   cnpj: null,
@@ -107,7 +110,7 @@ export async function resolverOperador(): Promise<Operador> {
 
   // Falha de leitura não pode apagar o documento da tela: o texto do produto
   // vale para todo mundo, e o que se perde é só a personalização.
-  if (error || !data) return { ...(await SEM_SESSAO()), sistema: branding().name };
+  if (error || !data) return { ...(await SEM_SESSAO()), sistema: await nomeDoSistema() };
 
   const org = data as {
     display_name: string | null;
@@ -118,7 +121,7 @@ export async function resolverOperador(): Promise<Operador> {
   };
 
   return {
-    sistema: branding().name,
+    sistema: await nomeDoSistema(),
     nome: org.display_name?.trim() || null,
     razaoSocial: org.legal_name?.trim() || null,
     cnpj: org.cnpj?.trim() || null,

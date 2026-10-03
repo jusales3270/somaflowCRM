@@ -349,7 +349,7 @@ export const DICIONARIO: Traducoes = {
   "Respondeu": { es: "Respondió" },
   "Logo para o tema escuro (opcional)": { es: "Logo para el tema oscuro (opcional)" },
   "Remover logo escuro": { es: "Eliminar logo oscuro" },
-  "Use uma versão legível sobre fundo escuro. Ela aparece sem moldura branca. Sem ela, o logo padrão mantém a proteção de contraste. PNG ou JPG, até 512 KB.": { es: "Usa una versión legible sobre fondo oscuro. Se muestra sin marco blanco. Sin ella, el logo predeterminado conserva la protección de contraste. PNG o JPG, hasta 512 KB." },
+  "Use uma versão legível sobre fundo escuro. Sem ela, o logo principal também é usado no tema escuro, sem moldura. PNG ou JPG, até 512 KB.": { es: "Usa una versión legible sobre fondo oscuro. Sin ella, el logo principal también se usa en el tema oscuro, sin marco. PNG o JPG, hasta 512 KB." },
   // /admin/email — o servidor SMTP da instalação (PR #714, @betoarts, recorte).
   "Servidor de e-mail conectado e autenticado.": { es: "Servidor de correo conectado y autenticado." },
   "Preencha e salve o servidor e o remetente antes de testar.": {

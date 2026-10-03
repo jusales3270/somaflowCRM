@@ -75,7 +75,7 @@ import * as path from "node:path";
 import * as zlib from "node:zlib";
 
 import { test, expect, type Page, type Locator } from "./helpers/test";
-import { DEFAULT_APP_NAME } from "@/lib/branding";
+import { DEFAULT_APP_NAME, DEFAULT_LOGO_URL } from "@/lib/branding";
 
 import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
 
@@ -509,7 +509,7 @@ test.describe("a moldura do logo no tema escuro", () => {
     ).toBe(true);
   });
 
-  test("(5) A FRONTEIRA: no escuro, a marca do PRODUTO não recebe moldura", async ({ page }) => {
+  test("(5) A FRONTEIRA: no escuro, a marca PADRÃO (sem logo enviado) não recebe moldura", async ({ page }) => {
     await loginComTotp(page, creds.users.dono!.email, secret());
     // Tira o logo enviado: sem ele, e com o nome padrão, a barra cai no ramo
     // `marcaDoProduto` — o `<svg>` inline desenhado para os dois temas.
@@ -520,17 +520,22 @@ test.describe("a moldura do logo no tema escuro", () => {
     expect(await temaDaPagina(page)).toBe("dark");
 
     const barra = page.locator("aside").first();
+    // Sem logo enviado, a marca padrão desta distribuição TEM logo (`DEFAULT_LOGO_URL`):
+    // a barra mostra essa imagem, e não o desenho do projeto original (o ramo
+    // `marcaDoProduto` está desligado — `DISTRIBUICAO_TEM_ARTE_VETORIAL`). O `src` ser o
+    // padrão é o que prova que o logo ENVIADO foi removido e o caso mede a coisa certa.
     await expect(
-      barra.locator("img"),
-      "ainda há um <img> na barra — o logo enviado não foi removido, e o caso mediria outra coisa",
-    ).toHaveCount(0, { timeout: 15_000 });
+      barra.locator("img").first(),
+      "a barra não voltou ao logo padrão — o logo enviado não foi removido, e o caso mediria outra coisa",
+    ).toHaveAttribute("src", DEFAULT_LOGO_URL, { timeout: 15_000 });
+    await expect(
+      barra.locator("svg[role=img]"),
+      "a barra desenhou a arte vetorial do projeto original em vez do logo padrão",
+    ).toHaveCount(0);
 
     // O nome padrão do produto (marca própria: SomaFlow CRM), não um literal.
     const marca = barra.getByRole("img", { name: DEFAULT_APP_NAME });
-    await expect(
-      marca,
-      "a barra não caiu no ramo `marcaDoProduto` — sem ele não há fronteira para medir",
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(marca, "o logo padrão não está visível na barra").toBeVisible({ timeout: 15_000 });
 
     // A negação é sobre TODA a cadeia entre a marca e o `<aside>`, e não só sobre
     // o pai: uma moldura acrescentada em qualquer avô pintaria igual na tela, e
@@ -556,8 +561,8 @@ test.describe("a moldura do logo no tema escuro", () => {
     const comMoldura = cadeia.filter((n) => fundoEClaro(n.fundo));
     expect(
       comMoldura,
-      `a marca do PRODUTO ganhou moldura clara no tema escuro — é o remédio dado a quem ` +
-        `não tem a doença, e quebra o visual que já existia: ${JSON.stringify(comMoldura)}`,
+      `a marca PADRÃO ganhou moldura clara no tema escuro — o SomaFlow decidiu sem ela: ` +
+        `${JSON.stringify(comMoldura)}`,
     ).toEqual([]);
   });
 
