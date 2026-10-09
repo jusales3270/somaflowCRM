@@ -183,6 +183,8 @@ Cada instalação traz os scripts em `hostgator-setup-kit/`:
 | `bash reset-mfa.sh` | Remove a verificação em duas etapas de quem perdeu o aparelho |
 | `bash healthcheck.sh` | Diagnóstico da instalação |
 
+**Operar o CRM pelo Claude Code.** Quem administra a instalação pode conectar o Claude Code (com a própria assinatura do Claude) ao CRM, em Configurações › API Tokens › Conectar ao Claude Code. A assinatura nunca entra no CRM, e os agentes dos seus clientes continuam na chave de API. Passo a passo em [`conectar-claude-code.md`](conectar-claude-code.md).
+
 O `reset-mfa.sh` é o que você mais vai usar: a verificação em duas etapas é obrigatória para administradores, e trocar de celular sem salvar os códigos de recuperação é a chamada de suporte mais comum.
 
 ---

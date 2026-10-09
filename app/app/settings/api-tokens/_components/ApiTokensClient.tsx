@@ -32,6 +32,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useT } from "@/hooks/i18n/useT";
+import {
+  comandoDoClaudeMcpAdd,
+  ESCOPOS_DO_CLAUDE_CODE,
+  VALIDADE_DO_TOKEN_DO_CLAUDE_CODE_DIAS,
+} from "@/lib/mcp/conectar-claude-code";
 
 /**
  * `mcp:read`/`mcp:write` faltavam nesta lista, e sem eles NENHUMA ferramenta
@@ -60,7 +65,12 @@ const SCOPES: { id: string; label: string }[] = [
   { id: "audit:read", label: "Ler o log de auditoria" },
 ];
 
-export function ApiTokensClient() {
+interface Props {
+  /** Presente só para quem administra a instalação (ver a page). */
+  conectarClaudeCode?: { urlDaInstalacao: string } | null;
+}
+
+export function ApiTokensClient({ conectarClaudeCode = null }: Props = {}) {
   const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { data, isLoading } = useApiTokens();
@@ -72,6 +82,22 @@ export function ApiTokensClient() {
   const [scopes, setScopes] = useState<string[]>([]);
   const [expiresInDays, setExpiresInDays] = useState<string>("");
   const [created, setCreated] = useState<CreatedApiToken | null>(null);
+  // O token recém-criado É o do Claude Code: só então o diálogo mostra o comando pronto.
+  const [doClaudeCode, setDoClaudeCode] = useState(false);
+
+  const criarTokenDoClaudeCode = async () => {
+    try {
+      const res = await create.mutateAsync({
+        name: t("Claude Code (administração)"),
+        scopes: [...ESCOPOS_DO_CLAUDE_CODE],
+        expires_in_days: VALIDADE_DO_TOKEN_DO_CLAUDE_CODE_DIAS,
+      });
+      setDoClaudeCode(true);
+      setCreated(res.data);
+    } catch {
+      /* noop — o hook já mostra o erro */
+    }
+  };
 
   const tokens = data?.data ?? [];
 
@@ -87,6 +113,7 @@ export function ApiTokensClient() {
         scopes,
         expires_in_days: expiresInDays ? Number(expiresInDays) : undefined,
       });
+      setDoClaudeCode(false);
       setCreated(res.data);
       setName("");
       setScopes([]);
@@ -103,6 +130,28 @@ export function ApiTokensClient() {
 
   return (
     <>
+      {conectarClaudeCode ? (
+        <section
+          data-testid="conectar-claude-code"
+          className="space-y-2 rounded-md border border-border p-4"
+        >
+          <h2 className="text-sm font-semibold">{t("Conectar ao Claude Code")}</h2>
+          <p className="text-sm text-muted-foreground">
+            {t(
+              "Use o Claude da sua assinatura para consultar e operar o CRM pelo terminal. O Claude Code roda na sua máquina e chama o CRM com um token de administrador; a sua assinatura nunca fica guardada aqui. Os agentes que atendem clientes continuam usando chave de API.",
+            )}
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={create.isPending}
+            onClick={() => void criarTokenDoClaudeCode()}
+          >
+            {t("Criar token para o Claude Code")}
+          </Button>
+        </section>
+      ) : null}
+
       <div className="flex sm:justify-end">
         <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto">
           {t("Criar token")}
@@ -150,7 +199,9 @@ export function ApiTokensClient() {
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {tok.expires_at ? new Date(tok.expires_at).toLocaleDateString(tagDoIdioma) : "—"}
+                    {tok.expires_at
+                      ? new Date(tok.expires_at).toLocaleDateString(tagDoIdioma)
+                      : "—"}
                   </TableCell>
                   <TableCell>
                     {!tok.revoked_at ? (
@@ -178,9 +229,7 @@ export function ApiTokensClient() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("Criar novo token")}</DialogTitle>
-            <DialogDescription>
-              {t("O plaintext será mostrado apenas uma vez.")}
-            </DialogDescription>
+            <DialogDescription>{t("O plaintext será mostrado apenas uma vez.")}</DialogDescription>
           </DialogHeader>
           <form onSubmit={onCreate} className="space-y-4">
             <div className="space-y-2">
@@ -239,7 +288,15 @@ export function ApiTokensClient() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!created} onOpenChange={(o) => !o && setCreated(null)}>
+      <Dialog
+        open={!!created}
+        onOpenChange={(o) => {
+          if (!o) {
+            setCreated(null);
+            setDoClaudeCode(false);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("Token criado")}</DialogTitle>
@@ -249,7 +306,7 @@ export function ApiTokensClient() {
           </DialogHeader>
           {created ? (
             <div className="space-y-3">
-              <code className="block break-all rounded-md border bg-muted p-3 text-sm">
+              <code className="block rounded-md border bg-muted p-3 text-sm break-all">
                 {created.plaintext}
               </code>
               <Button
@@ -265,13 +322,58 @@ export function ApiTokensClient() {
                 {t("Copiar para clipboard")}
               </Button>
               <p className="text-xs text-muted-foreground">{created._warning}</p>
+              {doClaudeCode && conectarClaudeCode ? (
+                <ComandoDoClaudeCode
+                  comando={comandoDoClaudeMcpAdd({
+                    urlDaInstalacao: conectarClaudeCode.urlDaInstalacao,
+                    token: created.plaintext,
+                  })}
+                />
+              ) : null}
             </div>
           ) : null}
           <DialogFooter>
-            <Button onClick={() => setCreated(null)}>{t("Fechar")}</Button>
+            <Button
+              onClick={() => {
+                setCreated(null);
+                setDoClaudeCode(false);
+              }}
+            >
+              {t("Fechar")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** O comando `claude mcp add` pronto, montado pela mesma regra do `pnpm conectar-claude`. */
+function ComandoDoClaudeCode({ comando }: { comando: string }) {
+  const t = useT();
+  return (
+    <div data-testid="comando-claude-code" className="space-y-2 border-t pt-3">
+      <p className="text-sm font-medium">{t("Cole no terminal da sua máquina:")}</p>
+      <code className="block rounded-md border bg-muted p-3 font-mono text-xs break-all">
+        {comando}
+      </code>
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={() => {
+          void copyToClipboard(comando).then((ok) => {
+            if (ok) toast.success(t("Comando copiado."));
+            else toast.error(t("Não foi possível copiar — selecione o comando acima."));
+          });
+        }}
+      >
+        {t("Copiar comando")}
+      </Button>
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'Depois, abra o Claude Code e peça, por exemplo: "quais negócios esfriaram esta semana?". O token vale 90 dias e pode ser revogado nesta tela.',
+        )}
+      </p>
+    </div>
   );
 }
