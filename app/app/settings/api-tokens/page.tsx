@@ -26,9 +26,9 @@ export default async function ApiTokensPage() {
         </p>
       </header>
       <ApiTokensClient
-        // Só quem administra a INSTALAÇÃO conecta o próprio Claude Code — o admin de
-        // uma organização de revenda segue com os tokens de integração de sempre.
-        conectarClaudeCode={
+        // Só quem administra a INSTALAÇÃO conecta o próprio assistente (Claude Code ou
+        // Codex) — o admin de uma organização de revenda segue com os tokens de sempre.
+        conectarAssistente={
           user.is_platform_admin ? { urlDaInstalacao: env.NEXT_PUBLIC_APP_URL } : null
         }
       />
