@@ -50,8 +50,10 @@ import type { MarcaDeSaida } from "@/lib/branding/saida";
  *
  * `<img>` em vez de next/image: a URL é de quem hospeda, e o `next/image` exige
  * allowlist de domínios fechada em BUILD — a imagem pré-buildada recusaria o
- * domínio do operador. Altura fixa e largura livre para não distorcer arte de
- * proporção desconhecida. Os `data-testid` são lidos por `tests/e2e/marca-logo.spec.ts`.
+ * domínio do operador. Teto de altura e de largura, nunca tamanho fixo: arte de
+ * proporção desconhecida não distorce e arquivo pequeno não é ampliado (o do
+ * formulário, 80×192 px, é o que `tests/e2e/marca-logo.spec.ts` mede). Os
+ * `data-testid` são lidos por aquela spec.
  */
 function logoDaFachada(marca: MarcaDeSaida, tamanho: string): React.ReactNode {
   if (!marca.logoUrl && !marca.logoDarkUrl) return null;
@@ -107,8 +109,8 @@ export default async function PublicLayout({ children }: { children: React.React
         </div>
         <PublicAuthShell
           marca={marca}
-          logoGrande={logoDaFachada(marca, "h-[85px] md:h-[110px] max-w-[22rem]")}
-          logoPequeno={logoDaFachada(marca, "h-[67px] max-w-[20rem]")}
+          logoGrande={logoDaFachada(marca, "h-auto max-h-[85px] md:max-h-[110px] max-w-[min(22rem,100%)]")}
+          logoPequeno={logoDaFachada(marca, "h-auto max-h-20 max-w-[12rem]")}
         >
           {children}
         </PublicAuthShell>

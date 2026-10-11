@@ -55,6 +55,12 @@
 # senão `ultima_release_estavel` do próprio kit (`/releases/latest`). Nunca a maior
 # tag: tag não é release publicada (ver o cabeçalho dessa função em _common.sh).
 # Sem resposta, REPROVA — gate que pula em silêncio não é gate.
+#
+# FORK sem release própria (ainda não publicou nenhuma): a última release é a do
+# repositório PAI, que é de onde o fork saiu e a que um cliente dele pode ter no
+# disco. Só com `GH_TOKEN` (é o `gh` que sabe quem é o pai), e a tag vem do pai
+# também — o fork não espelha tags (empurrar `v*` nele dispararia a publicação de
+# imagens).
 set -euo pipefail
 
 CONTAINER="${1:?uso: $0 <container> <banco>}"
@@ -63,8 +69,18 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 KIT="$ROOT/hostgator-setup-kit"
 
 release="${CONFERENCIA_KIT_RELEASE:-}"
+origem_das_tags="origin"
 if [ -z "$release" ] && [ -n "${GH_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
   release="$(cd "$ROOT" && gh release view --json tagName -q .tagName 2>/dev/null || true)"
+  if [ -z "$release" ]; then
+    pai="$(cd "$ROOT" && gh repo view --json parent \
+      -q 'if .parent then .parent.owner.login + "/" + .parent.name else "" end' 2>/dev/null || true)"
+    if [ -n "$pai" ]; then
+      release="$(gh release view -R "$pai" --json tagName -q .tagName 2>/dev/null || true)"
+      [ -n "$release" ] && origem_das_tags="https://github.com/$pai.git" \
+        && echo "    (fork sem release própria: última release do repositório pai, $pai — $release)"
+    fi
+  fi
 fi
 if [ -z "$release" ]; then
   release="$(cd "$ROOT" && bash -c 'source "$1/_common.sh" >/dev/null 2>&1; ultima_release_estavel' _ "$KIT" || true)"
@@ -86,7 +102,7 @@ update_sh_da() {  # update_sh_da <tag> — caminho de uma cópia do update.sh da
   if ! git -C "$ROOT" rev-parse -q --verify "refs/tags/$1^{commit}" >/dev/null; then
     local profundidade=""
     [ "$(git -C "$ROOT" rev-parse --is-shallow-repository)" = true ] && profundidade="--depth=1"
-    git -C "$ROOT" fetch -q --no-tags $profundidade origin "+refs/tags/$1:refs/tags/$1"
+    git -C "$ROOT" fetch -q --no-tags $profundidade "$origem_das_tags" "+refs/tags/$1:refs/tags/$1"
   fi
   git -C "$ROOT" show "$1:hostgator-setup-kit/update.sh" > "$TMP/$1"
   printf '%s' "$TMP/$1"
