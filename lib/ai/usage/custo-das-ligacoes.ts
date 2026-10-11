@@ -74,20 +74,22 @@ export function dataBr(dia: string): string {
   return `${d}/${m}/${a}`;
 }
 
+/** Reais sempre com 2 casas: é o que se lê numa fatura. */
 export function formatarReais(centavos: number, tag: string): string {
   return (centavos / 100).toLocaleString(tag, {
     style: "currency",
     currency: "BRL",
     minimumFractionDigits: 2,
-    maximumFractionDigits: centavos !== 0 && Math.abs(centavos) < 100 ? 4 : 2,
+    maximumFractionDigits: 2,
   });
 }
 
+/** Dólar com até 3 casas: a ligação curta custa frações de centavo de dólar. */
 export function formatarDolares(centavos: number, tag: string): string {
   return (centavos / 100).toLocaleString(tag, {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
-    maximumFractionDigits: centavos !== 0 && Math.abs(centavos) < 100 ? 4 : 2,
+    maximumFractionDigits: 3,
   });
 }

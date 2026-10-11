@@ -60,11 +60,15 @@ export function CustoDasLigacoesCard({
         />
         <Numero
           rotulo={t("Média por ligação")}
-          valor={medias.porLigacaoBrlCents === null ? "—" : formatarReais(medias.porLigacaoBrlCents, tag)}
+          valor={
+            medias.porLigacaoBrlCents === null ? "—" : formatarReais(medias.porLigacaoBrlCents, tag)
+          }
         />
         <Numero
           rotulo={t("Custo por minuto")}
-          valor={medias.porMinutoBrlCents === null ? "—" : formatarReais(medias.porMinutoBrlCents, tag)}
+          valor={
+            medias.porMinutoBrlCents === null ? "—" : formatarReais(medias.porMinutoBrlCents, tag)
+          }
           testid="custo-por-minuto-brl"
         />
       </dl>
@@ -87,51 +91,64 @@ export function CustoDasLigacoesCard({
 
       {recentes.length > 0 ? (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[34rem] text-left text-xs">
+          <table className="w-full text-left text-xs">
             <caption className="sr-only">{t("Ligações mais recentes")}</caption>
             <thead className="text-muted-foreground">
               <tr className="border-b">
                 <th className="py-1.5 pr-3 font-medium">{t("Quando")}</th>
                 <th className="py-1.5 pr-3 font-medium">{t("Duração")}</th>
-                <th className="py-1.5 pr-3 font-medium">{t("Modelo")}</th>
-                <th className="py-1.5 pr-3 text-right font-medium">{t("Dólar")}</th>
-                <th className="py-1.5 pr-3 text-right font-medium">{t("Cotação")}</th>
+                <th className="hidden py-1.5 pr-3 font-medium sm:table-cell">{t("Modelo")}</th>
+                <th className="hidden py-1.5 pr-3 text-right font-medium sm:table-cell">{t("Dólar")}</th>
+                <th className="hidden py-1.5 pr-3 text-right font-medium sm:table-cell">
+                  {t("Cotação")}
+                </th>
                 <th className="py-1.5 text-right font-medium">{t("Reais")}</th>
               </tr>
             </thead>
             <tbody>
-              {recentes.map((r) => (
-                <tr key={`${r.created_at}-${r.model}`} className="border-b last:border-0">
-                  <td className="py-1.5 pr-3 whitespace-nowrap">
-                    {new Date(r.created_at).toLocaleString(tag, {
-                      timeZone: "America/Sao_Paulo",
-                      day: "2-digit",
-                      month: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                    {r.status === "erro" ? (
-                      <span className="ml-1 text-destructive">· {t("não conectou")}</span>
-                    ) : null}
-                  </td>
-                  <td className="py-1.5 pr-3 tabular-nums">{duracao(r.duracao_ms)}</td>
-                  <td className="py-1.5 pr-3 font-mono">{r.model}</td>
-                  <td className="py-1.5 pr-3 text-right tabular-nums">
-                    {r.custo_usd_cents === null ? "—" : formatarDolares(r.custo_usd_cents, tag)}
-                  </td>
-                  <td
-                    className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground"
-                    title={r.cotacao_data ? `PTAX ${dataBr(r.cotacao_data)}` : undefined}
-                  >
-                    {r.cotacao === null
-                      ? "—"
-                      : r.cotacao.toLocaleString(tag, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}
-                  </td>
-                  <td className="py-1.5 text-right tabular-nums">
-                    {r.custo_brl_cents === null ? "—" : formatarReais(r.custo_brl_cents, tag)}
-                  </td>
-                </tr>
-              ))}
+              {recentes.map((r) => {
+                // Ligação que não conectou não gerou custo: traço, não "R$ 0,00".
+                const falhou = r.status === "erro";
+                return (
+                  <tr key={`${r.created_at}-${r.model}`} className="border-b last:border-0">
+                    <td className="py-1.5 pr-3 whitespace-nowrap">
+                      {new Date(r.created_at).toLocaleString(tag, {
+                        timeZone: "America/Sao_Paulo",
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {r.status === "erro" ? (
+                        <span className="ml-1 text-destructive">· {t("não conectou")}</span>
+                      ) : null}
+                    </td>
+                    <td className="py-1.5 pr-3 tabular-nums">{duracao(r.duracao_ms)}</td>
+                    <td className="hidden py-1.5 pr-3 font-mono sm:table-cell">{r.model}</td>
+                    <td className="hidden py-1.5 pr-3 text-right tabular-nums sm:table-cell">
+                      {falhou || r.custo_usd_cents === null
+                        ? "—"
+                        : formatarDolares(r.custo_usd_cents, tag)}
+                    </td>
+                    <td
+                      className="hidden py-1.5 pr-3 text-right text-muted-foreground tabular-nums sm:table-cell"
+                      title={r.cotacao_data ? `PTAX ${dataBr(r.cotacao_data)}` : undefined}
+                    >
+                      {falhou || r.cotacao === null
+                        ? "—"
+                        : r.cotacao.toLocaleString(tag, {
+                            minimumFractionDigits: 4,
+                            maximumFractionDigits: 4,
+                          })}
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">
+                      {falhou || r.custo_brl_cents === null
+                        ? "—"
+                        : formatarReais(r.custo_brl_cents, tag)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
