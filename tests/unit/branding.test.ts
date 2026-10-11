@@ -347,13 +347,6 @@ const MARCA_CONGELADA: Record<string, EntradaDeMarca> = {
     marcas: ["deskcommcrm", "deskcommcrm", "deskcommcrm"],
   },
 
-  // ─── PADRAO — a marca padrão precisa existir em algum lugar. ───
-  "lib/branding.ts": {
-    categoria: "PADRAO",
-    motivo:
-      "é a DEFINIÇÃO de DEFAULT_APP_NAME — o valor que aparece quando o operador não configurou marca nenhuma. Se esta linha sumir, some o padrão",
-    marcas: ["deskcommcrm"],
-  },
   // `lib/video/jitsi.ts` ficou DE FORA por decisão do review do #2441: ele
   // prefixa a sala do Jitsi com `sala-`, neutro. O link é repassado no chat e
   // cai na tela do cliente final de quem revende a instalação — a sala não é

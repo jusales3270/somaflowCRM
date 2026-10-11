@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 
 import { EntrarComGoogle } from "@/components/auth/EntrarComGoogle";
 import { LoginForm } from "@/components/auth/LoginForm";
@@ -17,10 +15,6 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string; reset?: string; error?: string }>;
 }) {
   const { next, reset, error } = await searchParams;
-  // O nome vem da marca RESOLVIDA (banco acima do .env): quem troca o nome em Admin › Marca
-  // tem de vê-lo aqui, e `branding()` lê só o .env.
-  const marca = await marcaDaSaida(null);
-
   // Fora da árvore de `app/app/layout.tsx` — sem `IdiomaProvider` do lado do
   // servidor (o cliente já tem o seu, montado em `app/(public)/layout.tsx`).
   // Quase nunca há sessão aqui (é a própria tela de entrar), mas resolve do

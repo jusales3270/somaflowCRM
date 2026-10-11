@@ -40,9 +40,6 @@ export default async function SignupPage({
   searchParams: Promise<{ invite?: string }>;
 }) {
   const { invite } = await searchParams;
-  // O nome vem da marca RESOLVIDA (banco acima do .env): quem troca o nome em Admin › Marca
-  // tem de vê-lo aqui, e `branding()` lê só o .env.
-  const marca = await marcaDaSaida(null);
   const payload = invite ? verifyInviteToken(invite) : null;
   const convite = invite && payload ? { token: invite, email: payload.email } : undefined;
   const conviteExpirado = Boolean(invite) && !payload;

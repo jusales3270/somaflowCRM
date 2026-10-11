@@ -24,9 +24,6 @@ export const dynamic = "force-dynamic";
 
 export default async function GetStartedPage() {
   const user = await requireAuth();
-  // O nome vem da marca RESOLVIDA (banco acima do .env): quem troca o nome em Admin › Marca
-  // tem de vê-lo aqui, e `branding()` lê só o .env.
-  const marca = await marcaDaSaida(null);
   const activeOrg = await resolveActiveOrg(user);
   // Quem já tem organização não passa por aqui: sem isto, a tela viraria um
   // "abra outra empresa" alcançável por quem digitasse a URL.

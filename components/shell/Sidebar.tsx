@@ -153,9 +153,9 @@ export function SidebarContent({
                   src={logo}
                   alt={nome}
                   className={cn(
-                    // Um único `min()` como teto: `max-w-[9.5rem]` + `max-w-full`
+                    // Um único `min()` como teto: `max-w-[10rem]` + `max-w-full`
                     // disputariam a mesma propriedade e só um sobreviveria.
-                    "h-[36px] w-auto max-w-[min(9.5rem,100%)] object-contain",
+                    "h-[36px] w-auto max-w-[min(10rem,100%)] object-contain",
                     logoEscuro && "dark:hidden",
                   )}
                 />
@@ -170,7 +170,7 @@ export function SidebarContent({
                 <img
                   src={logoEscuro}
                   alt={nome}
-                  className="hidden h-[36px] w-auto max-w-[min(9.5rem,100%)] object-contain dark:block"
+                  className="hidden h-[36px] w-auto max-w-[min(10rem,100%)] object-contain dark:block"
                 />
               ) : null}
             </div>
