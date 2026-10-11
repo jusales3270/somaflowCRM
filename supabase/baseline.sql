@@ -51132,6 +51132,115 @@ grant execute on function public.comando_da_conversa(public.conversations) to au
 
 notify pgrst, 'reload schema';
 
+-- ---- custo das ligações em reais: cotacoes_do_dolar + fn_custo_das_ligacoes (migration 9001) ----
+-- 9001+ é o bloco de migrations do fork SomaFlow (não colide com o upstream).
+-- Cotação PTAX por dia (global, gravada pelo cron api/v1/cron/cotacao-do-dolar)
+-- e a soma, no banco, do custo das ligações de voz em US$ e R$, cada ligação
+-- convertida pela cotação do dia dela. Racional no cabeçalho da migration.
+create table if not exists public.cotacoes_do_dolar (
+  data date primary key,
+  venda numeric(12,6) not null check (venda > 0),
+  compra numeric(12,6) check (compra is null or compra > 0),
+  fonte text not null default 'bcb_ptax',
+  obtida_em timestamptz not null default now()
+);
+
+comment on table public.cotacoes_do_dolar is
+  'PTAX do Banco Central por dia (reais por dólar). Global, não tenant-aware: a cotação é da instalação. Gravada pelo cron api/v1/cron/cotacao-do-dolar; lida por fn_custo_das_ligacoes para converter em reais o custo das ligações de voz.';
+
+alter table public.cotacoes_do_dolar enable row level security;
+
+drop policy if exists cotacoes_do_dolar_leitura on public.cotacoes_do_dolar;
+create policy cotacoes_do_dolar_leitura on public.cotacoes_do_dolar
+  for select to authenticated using (true);
+
+-- O default ACL do Supabase dá tudo a anon e authenticated em tabela nova de
+-- public: revogar explicitamente é o que protege (ver CLAUDE.md, audit log).
+revoke all on table public.cotacoes_do_dolar from public, anon, authenticated;
+grant select on table public.cotacoes_do_dolar to authenticated;
+
+create or replace function public.fn_custo_das_ligacoes(
+  p_org uuid,
+  p_desde timestamptz,
+  p_ate timestamptz,
+  p_recentes integer default 20
+)
+returns jsonb
+  language sql
+  stable
+  security invoker
+  set search_path to 'public', 'pg_temp'
+as $$
+  with ligacoes as (
+    select c.created_at,
+           c.model,
+           c.status,
+           c.cost_cents,
+           c.latency_ms,
+           (c.created_at at time zone 'America/Sao_Paulo')::date as dia
+      from public.llm_calls c
+     where c.organization_id = p_org
+       and c.purpose = 'voz_ao_vivo'
+       and c.created_at >= p_desde
+       and c.created_at <= p_ate
+  ),
+  convertidas as (
+    select l.*,
+           cot.data as cotacao_data,
+           cot.venda as cotacao,
+           l.cost_cents * cot.venda as custo_brl_cents
+      from ligacoes l
+      left join lateral (
+        select d.data, d.venda
+          from public.cotacoes_do_dolar d
+         order by (d.data > l.dia),
+                  case when d.data <= l.dia then d.data end desc,
+                  d.data asc
+         limit 1
+      ) cot on true
+  )
+  select jsonb_build_object(
+    'totais', (
+      select jsonb_build_object(
+        'ligacoes', count(*) filter (where status = 'ok'),
+        'falhas', count(*) filter (where status = 'erro'),
+        'duracao_ms', coalesce(sum(latency_ms) filter (where status = 'ok'), 0),
+        'custo_usd_cents', coalesce(sum(cost_cents), 0),
+        'custo_brl_cents', coalesce(sum(custo_brl_cents), 0),
+        'sem_preco', count(*) filter (where status = 'ok' and cost_cents is null),
+        'sem_cotacao', count(*) filter (where cost_cents is not null and cotacao is null)
+      )
+      from convertidas
+    ),
+    'recentes', coalesce((
+      select jsonb_agg(to_jsonb(r) order by r.created_at desc)
+        from (
+          select created_at, model, status, latency_ms as duracao_ms,
+                 cost_cents as custo_usd_cents, custo_brl_cents, cotacao, cotacao_data
+            from convertidas
+           order by created_at desc
+           limit greatest(0, least(coalesce(p_recentes, 20), 100))
+        ) r
+    ), '[]'::jsonb),
+    'cotacao_atual', (
+      select jsonb_build_object('data', d.data, 'venda', d.venda)
+        from public.cotacoes_do_dolar d
+       order by d.data desc
+       limit 1
+    )
+  );
+$$;
+
+comment on function public.fn_custo_das_ligacoes(uuid, timestamptz, timestamptz, integer) is
+  'Custo das ligações de voz (llm_calls purpose voz_ao_vivo) da organização num período, em centavos de dólar e de real — cada ligação convertida pela PTAX (cotacoes_do_dolar) do dia dela em Brasília, ou a última anterior. Totais, as ligações mais recentes e a cotação mais nova. jsonb para não passar pelo max_rows do PostgREST. security invoker: a RLS isola; p_org é defesa em profundidade. Não é a régua do teto mensal (fn_gasto_de_ia_do_mes).';
+
+revoke execute on function public.fn_custo_das_ligacoes(uuid, timestamptz, timestamptz, integer)
+  from public, anon;
+grant  execute on function public.fn_custo_das_ligacoes(uuid, timestamptz, timestamptz, integer)
+  to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
 -- ---- VARREDURA anon: função nova nasce exposta em quem ATUALIZA (migration 0116) ----
 --
 -- ⚠️ DE PROPÓSITO, NENHUMA FUNÇÃO É CRIADA DEPOIS DESTE BLOCO. Apêndice que cria

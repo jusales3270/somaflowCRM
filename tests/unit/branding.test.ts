@@ -833,6 +833,12 @@ type CategoriaDeHost =
 type EntradaDeHost = { categoria: CategoriaDeHost; motivo: string };
 
 const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
+  // ── SomaFlow: cotação do dólar para o custo das ligações em reais ──
+  "olinda.bcb.gov.br": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "API pública (OData, sem chave) da PTAX do Banco Central do Brasil, chamada pelo cron `api/v1/cron/cotacao-do-dolar` via `lib/cambio/ptax.ts` para converter em reais o custo das ligações de voz. É o destino do request; trocar pelo domínio do revendedor faria a cotação não chegar.",
+  },
   "chatgpt.com": {
     categoria: "FORNECEDOR",
     motivo:

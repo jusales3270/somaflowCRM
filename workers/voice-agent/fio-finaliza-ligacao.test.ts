@@ -66,7 +66,8 @@ vi.mock("./audioSocketBridge", () => ({
         modelo: "gpt-realtime",
         uso: {
           respostas: 1, entrada: 250, saida: 80,
-          entradaAudio: 200, entradaTexto: 50, entradaCache: 0, saidaAudio: 70, saidaTexto: 10,
+          entradaAudio: 200, entradaTexto: 50, entradaCache: 0,
+          entradaCacheAudio: 0, entradaCacheTexto: 0, saidaAudio: 70, saidaTexto: 10,
         },
         erro: null,
       };
@@ -82,7 +83,7 @@ beforeEach(() => {
 });
 
 describe("finalizeAudioSocketCall grava o uso da ligação", () => {
-  it("o fim da ligação grava UMA linha em llm_calls, com os tokens e custo nulo", async () => {
+  it("o fim da ligação grava UMA linha em llm_calls, com os tokens e o custo da tarifa", async () => {
     const socket = new EventEmitter() as EventEmitter & { end: () => void };
     socket.end = vi.fn();
     await handleAudioSocketConnection(socket as never, "uuid-1", Buffer.alloc(0));
@@ -96,7 +97,8 @@ describe("finalizeAudioSocketCall grava o uso da ligação", () => {
       model: "gpt-realtime",
       input_tokens: 250,
       output_tokens: 80,
-      cost_cents: null,
+      // 200 × $32 + 50 × $4 + 70 × $64 + 10 × $16 = $0,01124 → 1,124 centavo.
+      cost_cents: expect.closeTo(1.124, 10),
     });
   });
 });
