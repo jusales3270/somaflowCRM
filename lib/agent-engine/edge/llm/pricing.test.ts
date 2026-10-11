@@ -67,6 +67,10 @@ describe("costCents — cada tarifa isolada, por modelo", () => {
     ["gpt-4o-mini", 15, 60, 7.5, 15, 15],
     ["gpt-4o", 250, 1000, 125, 250, 250],
     ["gpt-4o-2024-05-13", 500, 1500, 500, 500, 500],
+    // Linha 6 (conferida em 11/10/2026): leitura de cache a 0.05× só no gpt-6.1-sol.
+    ["gpt-6-astra", 1000, 5000, 100, 1250, 1250],
+    ["gpt-6.1-sol", 200, 1000, 10, 250, 250],
+    ["gpt-6-luna", 10, 50, 1, 12.5, 12.5],
     ["gpt-5.6-terra", 200, 1200, 20, 250, 250],
     ["gpt-5.6-sol", 400, 2000, 40, 500, 500],
     ["gpt-5.6-luna", 20, 120, 2, 25, 25],
@@ -76,6 +80,18 @@ describe("costCents — cada tarifa isolada, por modelo", () => {
     ["gpt-5.4-mini", 75, 450, 7.5, 75, 75],
     ["gpt-5.4-nano", 20, 125, 2, 20, 20],
     ["gpt-5.4-pro", 3000, 18000, 3000, 3000, 3000],
+    // Google — leitura de cache a 0.1× a entrada (2.0 Flash não tem cache implícito, ver pricing.ts)
+    ["gemini-3.8-flash", 75, 375, 7.5, 75, 75],
+    ["gemini-3.7-flash", 75, 375, 7.5, 75, 75],
+    ["gemini-3.6-flash", 75, 375, 7.5, 75, 75],
+    ["gemini-3.1-flash-lite", 25, 150, 2.5, 25, 25],
+    ["gemini-3.5-flash", 150, 900, 15, 150, 150],
+    ["gemini-3.5-flash-lite", 30, 250, 3, 30, 30],
+    ["gemini-3.1-pro-preview", 200, 1200, 20, 200, 200],
+    ["gemini-2.5-pro", 125, 1000, 12.5, 125, 125],
+    ["gemini-2.5-flash", 30, 250, 3, 30, 30],
+    ["gemini-2.5-flash-lite", 10, 40, 1, 10, 10],
+    ["gemini-2.0-flash", 10, 40, 10, 10, 10],
   ])("%s", (model, cIn, cOut, cLeitura, cGrav5m, cGrav1h) => {
     expect(entrada(model)).toBeCloseTo(cIn, 6);
     expect(saida(model)).toBeCloseTo(cOut, 6);
@@ -110,13 +126,67 @@ describe("costCents — id que a tabela não conhece volta NULL", () => {
     ["claude-sonnet-50"],
     ["claude-opus-4-9"],
     ["claude-opus-48"],
-    // Id com prefixo de provider (formato do gateway/OpenRouter e do Bedrock) não
-    // é o que este seam registra em llm_calls — e vale NULL, não um chute.
-    ["anthropic/claude-sonnet-5"],
+    // Vizinhos da linha 6: o gpt-6-sol ficou fora do catálogo (o 6.1 o sucede) e
+    // não herda o preço de ninguém; nem o gpt-6-luna empresta o seu a um id parecido.
+    ["gpt-6-sol"],
+    ["gpt-6"],
+    ["gpt-6.1-luna"],
+    ["gpt-6-luna-mini"],
+    // Mesmo com o recorte do prefixo tolerado, modelo que não casa em NENHUM
+    // formato continua NULL — o recorte não inventa preço (armadilha 3).
+    ["anthropic/claude-sonnet-50"],
+    ["anthropic/claude-opus-4-9"],
+    // Prefixo de provider com PONTO (formato Bedrock) não é o que este seam
+    // registra em llm_calls — e vale NULL, não um chute. A barra (`anthropic/…`,
+    // OpenRouter) já é tolerada e coberta nos testes do PR #1880.
     ["anthropic.claude-sonnet-5"],
   ])("%s → null", (model) => {
     expect(costCents(model, { ...NADA, inputTokens: 1_000_000 })).toBeNull();
     expect(precoDoModelo(model)).toBeUndefined();
+  });
+});
+
+describe("costCents — id com prefixo provider/ (formato OpenRouter)", () => {
+  // Issue #1880: o OpenRouter devolve o id com o prefixo `anthropic/…`, e a
+  // tabela de preços é indexada sem ele. Custo NULL em toda chamada do agente →
+  // llm_calls.cost_cents nulo → budget soma coalesce(cost_cents, 0) → teto cego.
+  it.each([
+    // modelo, entrada, saída, leitura de cache, gravação 5m, gravação 1h
+    ["anthropic/claude-sonnet-5", 200, 1000, 20, 250, 400],
+    ["anthropic/claude-sonnet-4-6", 300, 1500, 30, 375, 600],
+    ["anthropic/claude-haiku-4-5", 100, 500, 10, 125, 200],
+    ["anthropic/claude-opus-5", 500, 2500, 50, 625, 1000],
+    ["openai/gpt-6-luna", 10, 50, 1, 12.5, 12.5],
+    ["google/gemini-3.5-flash-lite", 30, 250, 3, 30, 30],
+  ])("%s custa como o id sem prefixo", (model, cIn, cOut, cLeitura, cGrav5m, cGrav1h) => {
+    expect(entrada(model)).toBeCloseTo(cIn, 6);
+    expect(saida(model)).toBeCloseTo(cOut, 6);
+    expect(leituraDeCache(model)).toBeCloseTo(cLeitura, 6);
+    expect(gravacaoDeCache(model, "5m")).toBeCloseTo(cGrav5m, 6);
+    expect(gravacaoDeCache(model, "1h")).toBeCloseTo(cGrav1h, 6);
+  });
+
+  it("sufixo de data do vendor é tolerado mesmo com o prefixo provider/", () => {
+    expect(entrada("anthropic/claude-opus-4-1-20250805")).toBeCloseTo(1500, 6);
+    expect(entrada("anthropic/claude-sonnet-4-5-20250929")).toBeCloseTo(300, 6);
+  });
+
+  it("o TTL do cache continua respeitando o knob com prefixo", () => {
+    expect(gravacaoDeCache("anthropic/claude-sonnet-5", "5m")).toBeCloseTo(250, 6);
+    expect(gravacaoDeCache("anthropic/claude-sonnet-5", "1h")).toBeCloseTo(400, 6);
+  });
+
+  it("a conversa real com prefixo deixa de ser null", () => {
+    const turnoReal: TokenUsage = {
+      inputTokens: 359_369,
+      outputTokens: 4_070,
+      cacheReadTokens: 294_128,
+      cacheWriteTokens: 0,
+    };
+    const custo = costCents("anthropic/claude-sonnet-5", turnoReal);
+    expect(custo).not.toBeNull();
+    expect(custo).toBeGreaterThan(22);
+    expect(custo).toBeLessThan(24);
   });
 });
 

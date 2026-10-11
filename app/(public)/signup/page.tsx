@@ -55,6 +55,10 @@ export default async function SignupPage({
     (user?.user_metadata?.locale as string | undefined) ?? null,
   );
   const t = (texto: string) => traduzir(texto, idioma);
+  // O nome da marca vem do resolvedor que LÊ O BANCO (`marcaDaSaida`: banco
+  // acima do `.env`, e nunca lança) — `branding()` só veria a semente do `.env`,
+  // e o convite não muda isso (#2511, mesmo defeito das páginas `/legal`).
+  const marca = await marcaDaSaida(null);
 
   // Convite VÁLIDO passa em qualquer modo — é o ponto inteiro do convite.
   const modo = convite ? null : await modoDeCadastro();

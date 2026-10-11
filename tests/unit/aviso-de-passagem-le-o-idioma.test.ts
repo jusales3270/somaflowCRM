@@ -76,10 +76,25 @@ function avisaPeloMotor(pool: ReturnType<typeof poolComIdioma>) {
   );
 }
 
-/** Cliente supabase-js de mentira: só `organizations.locale` é lido por ele. */
+/**
+ * Cliente supabase-js de mentira: `organizations.locale` e, para as guardas de
+ * `avisarLeadDoCrm` (a IA já falou na conversa; um aviso por 24 h —
+ * `tests/unit/aviso-so-quando-a-ia-falou.test.ts`), uma fala da IA sem aviso
+ * anterior: o caso em que o aviso sai, que é o que este arquivo mede.
+ */
 function adminComIdioma(locale: string | null | Error) {
   return {
     from: (tabela: string) => {
+      if (tabela === "messages") {
+        const falas = { data: [{ metadata: null, created_at: new Date().toISOString() }], error: null };
+        const cadeia = {
+          select: () => cadeia,
+          eq: () => cadeia,
+          order: () => cadeia,
+          limit: async () => falas,
+        };
+        return cadeia;
+      }
       if (tabela !== "organizations") throw new Error(`tabela inesperada: ${tabela}`);
       if (locale instanceof Error) throw locale;
       const cadeia = {

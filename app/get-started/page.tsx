@@ -54,6 +54,10 @@ export default async function GetStartedPage() {
   const pedido = comAprovacao ? await estadoDoPedido(user.id) : null;
   const aguardando = pedido === "pending" || pedido === "rejected";
 
+  // O nome em texto vem do resolvedor do BANCO (`marcaDaSaida`), não do
+  // `branding()` — o banco vence e o `.env` é o piso.
+  const marca = await marcaDaSaida(null);
+
   return (
     <IdiomaProvider locale={user.idioma}>
       <main className="bg-muted/40 flex min-h-screen items-center justify-center px-4 py-10">

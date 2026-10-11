@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 
 import { audit } from "@/lib/audit";
 import { loadAuthUser, mfaEmDivida, resolveActiveOrg } from "@/lib/auth/server";
-import { ROLE_RANK } from "@/lib/auth/types";
+import { podeAdministrarEmpresa } from "@/lib/auth/pode-administrar-empresa";
 import { normalizarHex } from "@/lib/branding/rampa";
 import {
   marcaDaOrganizacaoSchema,
@@ -98,7 +98,7 @@ export async function updateMarcaDaOrganizacao(
   if (supportWriteError(authUser.support)) return { ok: false, error: "forbidden_role" };
   const activeOrg = await resolveActiveOrg(authUser);
   if (!activeOrg) return { ok: false, error: "forbidden_tenant" };
-  if (!authUser.is_platform_admin && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
+  if (!podeAdministrarEmpresa(authUser, activeOrg)) {
     return { ok: false, error: "forbidden_role" };
   }
   // DEPOIS do papel, de propósito: quem nem tem o papel recebe `forbidden_role`,
@@ -122,7 +122,10 @@ export async function updateMarcaDaOrganizacao(
   // Os dois campos vazios significam "volte ao que vem da instalação", e é `null`
   // que a função entende como apagar a chave `branding` — gravar `{}` deixaria um
   // envelope vazio que o resolvedor teria de aprender a ignorar.
-  const limpar = parsed.data.app_name === null && parsed.data.accent_hex === null;
+  const limpar =
+    parsed.data.app_name === null &&
+    parsed.data.accent_hex === null &&
+    parsed.data.accent_dark_hex === null;
   const marca = limpar
     ? null
     : {
@@ -133,6 +136,11 @@ export async function updateMarcaDaOrganizacao(
         // "mudou?" ser uma pergunta com resposta.
         accent_hex:
           parsed.data.accent_hex === null ? null : normalizarHex(parsed.data.accent_hex),
+        // O par da cor (#2482): mesma normalização, mesma regex da função SQL.
+        accent_dark_hex:
+          parsed.data.accent_dark_hex === null
+            ? null
+            : normalizarHex(parsed.data.accent_dark_hex),
         updated_by: authUser.id,
         updated_at: new Date().toISOString(),
       };

@@ -33,6 +33,7 @@ export default async function LoginPage({
     (user?.user_metadata?.locale as string | undefined) ?? null,
   );
   const t = (texto: string) => traduzir(texto, idioma);
+  const marca = await marcaDaSaida(null);
 
   return (
     <div className="space-y-6">
@@ -157,10 +158,7 @@ export default async function LoginPage({
         </p>
         <p className="text-muted-foreground">
           {t("Não tem conta?")}{" "}
-          <Link
-            href="/signup"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
+          <Link href="/signup" className="font-medium text-foreground underline underline-offset-4">
             {t("Criar conta")}
           </Link>
         </p>

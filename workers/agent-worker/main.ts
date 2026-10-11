@@ -1,9 +1,9 @@
+import { disporJobAposFalha } from "./dispor-job-apos-falha";
 import { createApprovedReplyHandler } from "@/lib/agent-engine/agent/approved-reply";
 import { turnKnobsFromEnv } from "@/lib/agent-engine/agent/turn-knobs";
 import { createMeetDeliveryHandler } from "@/lib/agent-engine/agent/meet-delivery";
 import { claimOfJob } from "@/lib/agent-engine/queue/claim";
 import { AgendaDeferredError } from "@/lib/agenda/protecao-followup";
-import { avisarRespostaDeCasoObsoleto } from "@/lib/atendimento/aviso-caso-obsoleto";
 import { withServiceJob } from "@/lib/atendimento/fronteira-server";
 import { StaleServiceBoundaryError } from "@/lib/atendimento/fronteira";
 /**
@@ -32,12 +32,13 @@ import { StaleServiceBoundaryError } from "@/lib/atendimento/fronteira";
 // Mesma lógica de `sentry.server.config.ts`/`sentry.edge.config.ts`
 // (reaproveitada, não duplicada): DSN resolvido por `resolveSentryDsn`,
 // amostragem de trace condicionada ao Sentry da comunidade via
-// `isCommunityDsn` (issue #100), e os hooks de scrub de `lib/sentry/scrub.ts`.
+// `isCommunityDsn` (issue #100), e a coleta restrita + scrub de
+// `lib/sentry/privacidade.ts`.
 // O `@sentry/nextjs` funciona fora do Next — aqui é só `Sentry.init` puro,
 // sem `instrumentation.ts` porque o worker não é um processo Next.
 import * as Sentry from "@sentry/nextjs";
 import { resolveSentryDsn, isCommunityDsn, DEFAULT_SENTRY_DSN } from "@/lib/sentry/dsn";
-import { sentryScrubHooks } from "@/lib/sentry/scrub";
+import { opcoesDePrivacidade } from "@/lib/sentry/privacidade";
 
 const sentryDsn = resolveSentryDsn(process.env.SENTRY_DSN);
 const sentryCommunity = isCommunityDsn(sentryDsn);
@@ -47,10 +48,9 @@ Sentry.init({
 
   // No Sentry da comunidade, só erro (issue #100). Ver isCommunityDsn().
   tracesSampleRate: sentryCommunity ? 0 : 1,
-  enableLogs: true,
-  sendDefaultPii: false,
 
-  ...sentryScrubHooks,
+  // Coleta restrita + scrub, num ponto só (Sentry 11 coleta amplo por default).
+  ...opcoesDePrivacidade,
 });
 
 // Transparência de telemetria (mesma mensagem de sentry.server.config.ts,
@@ -68,7 +68,6 @@ if (!sentryDsn) {
   console.info("[telemetria] worker: Erros sendo enviados ao Sentry configurado em SENTRY_DSN.");
 }
 
-import http from "node:http";
 import { hostname } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -89,24 +88,26 @@ import {
   carregarComportamentoPorPool,
   pisoDoComportamentoDoMotor,
 } from "@/lib/instalacao/comportamento-sql";
-import { runDrainLoop } from "@/lib/agent-engine/edge/crm/drain";
-import { runEventLogDrainLoop, prontidaoDoLacoDeEventLog } from "@/lib/event-log/drain-loop";
+import { prontidaoDoDrainDaIa, runDrainLoop } from "@/lib/agent-engine/edge/crm/drain";
+import { sincronizarAvisoDoDrain } from "@/lib/agent-engine/edge/crm/vigilancia-do-drain";
+import { runEventLogDrainLoop } from "@/lib/event-log/drain-loop";
 import { crmEdgeConfigFromEnv } from "@/lib/agent-engine/edge/crm/mcp-client";
-import { enforceHolds, sessionHealthMetrics } from "@/lib/agent-engine/edge/crm/session-watchdog";
+import { enforceHolds } from "@/lib/agent-engine/edge/crm/session-watchdog";
 import { runVoiceCallsBridgeLoop } from "@/lib/wacalls/events-bridge";
 import { runSessionWatchdogLoop } from "@/lib/agent-engine/edge/crm/session-reconciler";
 import { runHealthLoop } from "@/lib/agent-engine/health/circuit";
 import { runFlywheelLoop } from "@/lib/agent-engine/flywheel/live";
 import { llmEdgeConfigFromEnv } from "@/lib/agent-engine/edge/llm/run-model-call";
 import { loadEnv, type Env } from "@/lib/agent-engine/env";
+import { urlDoSupabaseNoServidor } from "@/lib/supabase/url-do-servidor";
 import { createLogger, type Logger } from "@/lib/agent-engine/obs/logger";
 import {
   evaluateCacheHitAlert,
-  metricsSnapshot,
   recordRunMetrics,
   type CacheAlertKnobs,
 } from "@/lib/agent-engine/obs/metrics";
 import { rodarLoopDaFila } from "@/lib/agent-engine/queue/loop";
+import { createHealthzServer } from "./healthz";
 import {
   adiarAteORecarregar,
   avisarFaltaDeSaldo,
@@ -116,10 +117,8 @@ import {
   jaNaoHaOQueResponder,
 } from "@/lib/agent-engine/queue/espera-de-saldo";
 import {
-  cancelJob,
   claimJobs,
   completeJob,
-  failJob,
   faltaParaOProximoJob,
   reapExpiredJobs,
   type JobKind,
@@ -197,70 +196,12 @@ async function assertHarnessSchema(pool: pg.Pool): Promise<void> {
   }
 }
 
-/** /healthz + /metrics do worker (bind 0.0.0.0 — o container expõe a porta). */
-export function createHealthzServer(
-  pool: pg.Pool,
-  log: Logger,
-  metricsWindowMs: number,
-): http.Server {
-  const respond = (res: http.ServerResponse, code: number, body: unknown): void => {
-    res.writeHead(code, { "content-type": "application/json" });
-    res.end(JSON.stringify(body));
-  };
-  const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
-    const route = (req.url ?? "").split("?", 1)[0];
-    if (req.method !== "GET" || (route !== "/healthz" && route !== "/metrics")) {
-      respond(res, 404, { error: "not_found" });
-      return;
-    }
-    if (route === "/metrics") {
-      try {
-        respond(res, 200, await metricsSnapshot(pool, metricsWindowMs));
-      } catch (err) {
-        log.error("metrics: snapshot indisponível", { error: errMsg(err) });
-        respond(res, 503, { status: "degraded", db: "error" });
-      }
-      return;
-    }
-    const uptime_s = Math.round(process.uptime());
-    try {
-      const { rows } = await pool.query<{ status: string; n: number }>(
-        "select status, count(*)::int as n from job_queue group by status",
-      );
-      const queue = { pending: 0, running: 0, dead: 0 };
-      for (const row of rows) {
-        if (row.status in queue) queue[row.status as keyof typeof queue] = row.n;
-      }
-      const sessions = await sessionHealthMetrics(pool);
-      // O laço do event_log é informação de saúde de PRIMEIRA classe (#604): na
-      // #648 este mesmo handler respondia 200 com o laço parado havia dez dias.
-      // `event_log_drain` vai nos DOIS ramos, 200 e 503, de propósito — a
-      // prontidão do laço não depende do banco estar de pé, e é ela que o gate
-      // de publicação exige antes de publicar.
-      respond(res, 200, {
-        status: "ok",
-        db: "ok",
-        queue,
-        sessions,
-        event_log_drain: prontidaoDoLacoDeEventLog(),
-        uptime_s,
-      });
-    } catch (err) {
-      log.error("healthz: banco indisponível", { error: errMsg(err) });
-      respond(res, 503, {
-        status: "degraded",
-        db: "error",
-        queue: null,
-        sessions: null,
-        // Mesmo com o banco fora, a prontidão do laço aparece: é ela que o gate
-        // de publicação (#604) lê antes de deixar as imagens irem para o canal.
-        event_log_drain: prontidaoDoLacoDeEventLog(),
-        uptime_s,
-      });
-    }
-  };
-  return http.createServer((req, res) => void handle(req, res));
-}
+/**
+ * O `/healthz` + `/metrics` do worker moram em `./healthz` desde a #2505: o
+ * `main()` no topo deste módulo impede importá-lo num teste, e o caso de aceite
+ * da issue precisa subir o servidor de verdade para provar o 503 com o laço
+ * travado.
+ */
 
 export async function startWorker(
   env: Env,
@@ -321,6 +262,15 @@ export async function startWorker(
         if (reaped.revived + reaped.dead > 0) log.warn("reaper devolveu jobs órfãos", reaped);
       })
       .catch((err: unknown) => log.error("reaper falhou", { error: errMsg(err) }));
+    // O AVISO DE LAÇO PARADO (#2505) sai do relógio do reaper, e não do laço:
+    // um laço travado não pode ser quem avisa de si mesmo. No caso saudável o
+    // custo é um UPDATE que casa zero linhas, e `sincronizarAvisoDoDrain` nunca
+    // lança — falha da Central vira `warn`.
+    void sincronizarAvisoDoDrain(
+      pool,
+      prontidaoDoDrainDaIa().parado ? "parado" : "saudavel",
+      log,
+    );
   }, env.QUEUE_REAPER_INTERVAL_MS);
 
   // Holds de sessão/saúde: retém jobs de envio de número fora do ar (WORKING é a
@@ -483,8 +433,8 @@ export async function startWorker(
         }
       }
       try {
-        const wrote = await recordRunMetrics(pool, job);
-        if (wrote > 0) {
+        const llmCalls = await recordRunMetrics(pool, job);
+        if (llmCalls > 0) {
           await evaluateCacheHitAlert(pool, job.organization_id, cacheAlertKnobs);
         }
       } catch (metricsErr) {
@@ -561,18 +511,7 @@ export async function startWorker(
         Sentry.captureException(err);
       }
       try {
-        if (
-          err instanceof StaleServiceBoundaryError &&
-          job.kind === "case_reply_turn" &&
-          typeof job.payload.case_id === "string"
-        ) {
-          await avisarRespostaDeCasoObsoleto(pool, job.organization_id, job.payload.case_id);
-        }
-        if (terminal) {
-          await cancelJob(pool, job.id, workerId, errMsg(err), claimOfJob(job)?.acquired_at);
-        } else {
-          await failJob(pool, job.id, workerId, err, claimOfJob(job)?.acquired_at);
-        }
+        await disporJobAposFalha(pool, job, workerId, err, terminal, log);
       } catch (failErr) {
         log.error("disposição do job indisponível — lease expira via reaper", {
           job_id: job.id,
@@ -694,7 +633,7 @@ export async function main(): Promise<void> {
   const handlers = new Map<JobKind, JobHandler>();
   const turnDeps: FollowupTurnDeps = {
     crmCfg: crmEdgeConfigFromEnv({
-      SUPABASE_URL: env.NEXT_PUBLIC_SUPABASE_URL,
+      SUPABASE_URL: urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
       SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
     }),
     llmCfg: llmEdgeConfigFromEnv(env),

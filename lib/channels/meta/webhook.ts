@@ -122,6 +122,14 @@ export interface InboundMessageEvent {
     mime: string | null;
     /** Nota de voz de verdade (não anexo de áudio). */
     voice: boolean;
+    /**
+     * Nome ORIGINAL do arquivo — a Cloud API só manda `filename` em
+     * `document` (imagem/vídeo/áudio vêm sem). Vira
+     * `metadata.media_filename` na ingestão, que é o que o cartão do Inbox
+     * lê (#2613). Opcional: o parser SEMPRE preenche (null quando não há),
+     * mas quem monta um evento à mão não é obrigado a inventar a chave.
+     */
+    filename?: string | null;
   } | null;
   /**
    * `messages[].referral` cru — vem na mensagem que o app do cliente manda ao
@@ -172,14 +180,43 @@ export interface OutboundEchoEvent {
     url: string | null;
     mime: string | null;
     voice: boolean;
+    /** Nome original do arquivo, só em `document` — idem a recebida (#2613). */
+    filename?: string | null;
   } | null;
+}
+
+/**
+ * Contato que a empresa criou ou renomeou no ENDEREÇO do app WhatsApp Business,
+ * num número em coexistência. A Meta entrega no campo `smb_app_state_sync`
+ * (webhooks/reference/smb_app_state_sync).
+ *
+ * Serve para o CRM conhecer o mesmo nome que a equipe usa no celular antes da
+ * primeira mensagem. `action` é `add` (criou OU editou, segundo a Meta) ou
+ * `remove` (apagou do endereço) — e `remove` vem SEM `full_name`/`first_name`:
+ * a referência diz que o nome sai junto com o contato.
+ *
+ * **Não é mensagem**: não há `id`, não há conversa e não há efeito em caixa de
+ * entrada — por isso o evento não carrega timestamp (nada aqui o leria).
+ */
+export interface AppContactSyncEvent {
+  kind: "app_contact_sync";
+  wabaId: string;
+  /** Qual número NOSSO tem o endereço — amarra o evento à sessão certa. */
+  phoneNumberId: string;
+  /** `contact.phone_number` do CLIENTE, sem `+` (a mesma grafia de `from`/`to`). */
+  phone: string;
+  /** `full_name`, ou `first_name` na falta dele. `null` quando a Meta não manda nome. */
+  name: string | null;
+  /** `add` = criou/editou no app; `remove` = apagou do endereço. */
+  action: string;
 }
 
 export type MetaWebhookEvent =
   | TemplateStatusEvent
   | MessageStatusEvent
   | InboundMessageEvent
-  | OutboundEchoEvent;
+  | OutboundEchoEvent
+  | AppContactSyncEvent;
 
 /**
  * O formato do fio mora em `./envelope.ts`, onde é um schema Zod — e o tipo
@@ -204,6 +241,17 @@ export function normalizeRejectedReason(v: unknown): string | null {
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+/** Rótulo do botão tocado: `button.text` (modelo) ou `interactive.button_reply|list_reply.title`. */
+function textoDoClique(raw: Record<string, unknown>, tipo: string): string | null {
+  if (tipo === "button") {
+    const b = raw.button as Record<string, unknown> | undefined;
+    return str(b?.text) ?? str(b?.payload);
+  }
+  const i = raw.interactive as Record<string, unknown> | undefined;
+  const r = (i?.button_reply ?? i?.list_reply) as Record<string, unknown> | undefined;
+  return str(r?.title) ?? str(r?.id);
 }
 
 /**
@@ -248,9 +296,15 @@ export function parseMetaWebhook(envelope: MetaWebhookEnvelope): MetaWebhookEven
 
           const perfil = contatos.find((c) => str(c.wa_id) === from);
           const tipo = str(raw.type) ?? "unknown";
-          const corpoMidia = tipo !== "contacts" ? (raw[tipo] as Record<string, unknown> | undefined) : undefined;
+          // Toque num botão de modelo chega como `button`, e numa resposta interativa como
+          // `interactive`: nenhum dos dois cabe no CHECK de `messages.type`, e gravá-los crus
+          // fazia o insert falhar — a resposta do contato sumia do CRM. Entram como texto,
+          // com o rótulo que a pessoa tocou.
+          const cliqueDeBotao = tipo === "button" || tipo === "interactive";
+          const corpoMidia =
+            tipo !== "contacts" && !cliqueDeBotao ? (raw[tipo] as Record<string, unknown> | undefined) : undefined;
           const sharedContact = tipo === "contacts" ? parseMetaInboundContact(raw) : null;
-          const tipoCrm = tipo === "contacts" ? "contact" : tipo;
+          const tipoCrm = tipo === "contacts" ? "contact" : cliqueDeBotao ? "text" : tipo;
 
           out.push({
             kind: "inbound_message",
@@ -262,8 +316,9 @@ export function parseMetaWebhook(envelope: MetaWebhookEnvelope): MetaWebhookEven
             // A Meta manda epoch em SEGUNDOS, string. Passar direto ao Date daria 1970.
             sentAt: new Date(Number(str(raw.timestamp) ?? "0") * 1000),
             type: tipoCrm,
-            text:
-              tipoCrm === "text"
+            text: cliqueDeBotao
+              ? textoDoClique(raw, tipo)
+              : tipoCrm === "text"
                 ? str((raw.text as Record<string, unknown>)?.body)
                 : sharedContact?.name ?? null,
             ...(sharedContact ? { sharedContact } : {}),
@@ -274,6 +329,9 @@ export function parseMetaWebhook(envelope: MetaWebhookEnvelope): MetaWebhookEven
                     url: str(corpoMidia.url),
                     mime: str(corpoMidia.mime_type),
                     voice: corpoMidia.voice === true,
+                    // Nome original (Cloud API: `document.filename`). `str`
+                    // devolve null em string vazia — a chave não nasce vazia.
+                    filename: str(corpoMidia.filename),
                   }
                 : null,
             referral: raw.referral ?? null,
@@ -337,8 +395,34 @@ export function parseMetaWebhook(envelope: MetaWebhookEnvelope): MetaWebhookEven
                     url: str(corpoMidia.url),
                     mime: str(corpoMidia.mime_type),
                     voice: corpoMidia.voice === true,
+                    // Idem a recebida: o eco do app também traz `document.filename`.
+                    filename: str(corpoMidia.filename),
                   }
                 : null,
+          });
+        }
+        continue;
+      }
+      // Coexistência: contato que a empresa criou/editou no ENDEREÇO do app
+      // WhatsApp Business (`smb_app_state_sync`). O payload é o da referência
+      // webhooks/reference/smb_app_state_sync: `state_sync[]` com `type`,
+      // `contact` e `action`.
+      if (change.field === "smb_app_state_sync" && Array.isArray(v.state_sync)) {
+        const meta = (v.metadata ?? {}) as Record<string, unknown>;
+        for (const raw of v.state_sync as Record<string, unknown>[]) {
+          // Hoje só `contact` tem forma que sabemos ler; outro `type` fica de fora.
+          if (str(raw.type) !== "contact") continue;
+          const contato = (raw.contact ?? {}) as Record<string, unknown>;
+          const phone = str(contato.phone_number);
+          if (!phone) continue; // payload capenga não vira linha meia-boca
+          out.push({
+            kind: "app_contact_sync",
+            wabaId,
+            phoneNumberId: str(meta.phone_number_id) ?? "",
+            phone,
+            // `remove` vem sem nome de propósito — ver `AppContactSyncEvent`.
+            name: str(contato.full_name) ?? str(contato.first_name),
+            action: str(raw.action) ?? "add",
           });
         }
         continue;

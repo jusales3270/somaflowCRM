@@ -20,9 +20,10 @@ import type pg from "pg";
 
 import type { AdminClient, EnrollmentPatch } from "./engine";
 import { flowGraphSchema } from "./graph-schema";
-import { EVENTO_ACAO_ADIADA, classEdgeMatch, selectEdge, type EnrollmentRow } from "./node-handlers";
+import { EVENTO_ACAO_ADIADA, EVENTO_CLASSIFICACAO_ESPERANDO, classEdgeMatch, selectEdge, type EnrollmentRow } from "./node-handlers";
 import { coletarEsperasAdaptativas, montarTimingPlan, type PropostaDeEspera } from "./timing-plan";
 import { persistirRespostaFollowupPg } from "./persistir-resposta";
+import { contextoDoContato } from "@/lib/automation/texto-do-followup";
 
 /** Superset de AdminClient: a ponte precisa do snapshot COMPLETO do enrollment
  *  (current_node_id/version_id/steps_taken) pra montar o passo de conclusão —
@@ -41,6 +42,11 @@ export type TurnResult =
   | { kind: "sent" }
   | { kind: "skipped"; reason: string }
   | { kind: "classified"; class: string }
+  /**
+   * O turno de classificar não achou resposta ao envio do fluxo. Não é passo:
+   * o enrollment segue esperando no nó. Ver `EVENTO_CLASSIFICACAO_ESPERANDO`.
+   */
+  | { kind: "awaiting_reply" }
   /**
    * O envio NÃO saiu e NÃO foi recusado: está estacionado até `until`, porque a
    * janela está fechada (anti-ban por canal, ou a faixa de envio do agente). O
@@ -188,6 +194,25 @@ export async function completeTurnForEnrollment(
     });
     if (!inserted) return; // replay — este adiamento já foi registrado
     await db.updateEnrollment(enrollmentId, orgId, patch);
+    return;
+  }
+
+  if (result.kind === "awaiting_reply") {
+    // Só o RASTRO da espera: `steps_taken` não sobe, `next_eval_at` não muda (a
+    // carência já corre desde que o nó enfileirou o turno) e a chave não é a do
+    // passo — `${nó}:${passo}` ocupada aqui faria o motor ler a espera como
+    // "o turno já concluiu". Uma linha por job: o retry do mesmo job é no-op.
+    if (node.type !== "ai_classify") {
+      throw new Error(`completeTurnForEnrollment: resultado 'awaiting_reply' mas o nó "${node.id}" não é 'ai_classify'`);
+    }
+    await db.insertEnrollmentEvent({
+      organization_id: orgId,
+      enrollment_id: enrollmentId,
+      node_id: node.id,
+      event_type: EVENTO_CLASSIFICACAO_ESPERANDO,
+      payload: { until: enrollment.next_eval_at },
+      idempotency_key: `${node.id}:${enrollment.steps_taken}:espera:${jobId ?? now.toISOString()}`,
+    });
     return;
   }
 
@@ -356,6 +381,8 @@ export function createPgAdminClient(pool: pg.Pool): TurnBridgeAdminClient {
         custom_fields: lead?.custom_fields ?? {},
       };
     },
+    /** #2528 — contexto do render das mensagens de follow-up (o MESMO par de leituras de `loadLeadFacts`, com as linhas inteiras). */
+    loadRenderContext: (orgId, contactId) => contextoDoContato(pool, orgId, contactId),
     async loadLastInboundBody(orgId, contactId, conversationId, naoAntesDe) {
       const params: unknown[] = [orgId, contactId, conversationId ?? null];
       const desde = naoAntesDe ? "and sent_at >= $4" : "";

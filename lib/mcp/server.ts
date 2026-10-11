@@ -13,12 +13,14 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { z } from "zod";
 
 import type { ModuloOpcional } from "@/lib/instalacao/modulos";
+import type { CapacidadeDaOrganizacao } from "@/lib/organizacao/capacidades";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { auditMcpToolCall } from "./audit";
-import { ensureRole, ensureScope, type McpAuthResult } from "./auth";
+import { McpAuthError, ensureRole, ensureScope, type McpAuthResult } from "./auth";
 import { verificarTetoMcp } from "./rate-limit";
+import { tamanhoDoResultado } from "./resultado-bytes";
 import { allTools } from "./tools";
-import { deModuloDesligado } from "./tools/catalog";
+import { deCapacidadeDesligada, deModuloDesligado } from "./tools/catalog";
 import { higienizarUuidsDeAterro } from "./uuid-de-aterro";
 import type { McpContext } from "./types";
 
@@ -44,6 +46,8 @@ export function createMcpServer(
   auth: McpAuthResult,
   requestId: string,
   modulosLigados: readonly ModuloOpcional[] = [],
+  capacidadesLigadas: readonly CapacidadeDaOrganizacao[] = [],
+  idempotencyKey?: string,
 ): McpServer {
   const server = new McpServer({
     name: SERVER_NAME,
@@ -54,6 +58,7 @@ export function createMcpServer(
 
   for (const tool of allTools) {
     if (deModuloDesligado(tool.name, modulosLigados)) continue;
+    if (deCapacidadeDesligada(tool.name, capacidadesLigadas)) continue;
     server.registerTool(
       tool.name,
       {
@@ -75,6 +80,7 @@ export function createMcpServer(
         const args = higiene.limpos;
         const argsAudit = tool.redigirParaAuditoria ? tool.redigirParaAuditoria(args) : args;
         const ctx: McpContext = {
+          ...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
           organizationId: auth.organizationId,
           role: auth.role,
           actor: auth.actor,
@@ -89,6 +95,17 @@ export function createMcpServer(
           // `catch` abaixo é quem AUDITA, e recusa sem rastro em
           // `api_audit_log` faria "o agente parou" virar mistério.
           await verificarTetoMcp(auth, tool.category);
+          // Empresa suspensa: só a privacidade responde (LGPD nunca é
+          // bloqueada). Depois do teto — a integração em laço não escreve
+          // auditoria sem freio — e antes de tudo que custa.
+          if (auth.orgSuspensa && !tool.permiteOrgSuspensa) {
+            throw new McpAuthError(
+              -32002,
+              403,
+              "Organization suspended: only privacy (LGPD) tools answer until the account is reactivated.",
+              "org_suspended",
+            );
+          }
           ensureScope(auth.scopes, tool.requiresScope);
           ensureRole(auth.role, tool.requiresRole);
 
@@ -106,6 +123,10 @@ export function createMcpServer(
             durationMs,
             success: motivoDoVazio === null,
             resultSummary: summarizeResult(result),
+            // Mede o texto de `content` (o que a ferramenta devolve ao modelo). O `structuredContent`,
+            // mais abaixo, leva o mesmo objeto para o cliente que prefere dado estruturado e NÃO entra
+            // nesta medida: um cliente que lê os dois campos recebe cerca de o dobro do que a coluna diz.
+            resultBytes: tamanhoDoResultado(result),
             ...(motivoDoVazio === null
               ? {}
               : { desfecho: "sem_resultado" as const, motivo: motivoDoVazio }),

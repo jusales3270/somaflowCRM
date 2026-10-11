@@ -92,6 +92,13 @@ export interface Message {
   media_mime: string | null;
   media_size_bytes: number | null;
   media_storage_path: string | null;
+  /** Transcrição de mídia derivada (áudio→texto). Só disponível quando
+   * `media_derived_status === 'ready'`. A realimentação chega aqui vinda das
+   * colunas `messages.media_derived_text/status` (#2057). Elas já eram usadas
+   * pela IA; agora o balão da inbox também as lê para o atendente que não
+   * consegue ouvir. */
+  media_derived_text?: string | null;
+  media_derived_status?: string | null;
   // Espelha o CHECK do banco (messages_sent_via_check): 'crm', 'external_device',
   // 'automation', 'ai', 'user', 'system'. O tipo listava só três e o TypeScript
   // aceitava os demais só porque o dado vem do Supabase sem cast — a tela então
@@ -130,6 +137,18 @@ export interface Note {
   created_by_user_id: string | null;
   created_by_name: string | null;
   created_at: string;
+  /**
+   * O anexo da nota (#1863, F3), em `internal-media` — nunca no
+   * `whatsapp-media`, que é o bucket do canal do cliente. Os três nascem com
+   * `null` e continuam `null` em toda nota só de texto: um quarto de nota antiga
+   * não muda de forma, só ganha as colunas.
+   *
+   * O tipo de render não vem do banco: é derivado de `media_mime` por
+   * `kindFromMime` (o mesmo corte que aceitou o arquivo no upload).
+   */
+  media_storage_path: string | null;
+  media_mime: string | null;
+  media_size_bytes: number | null;
 }
 
 /**

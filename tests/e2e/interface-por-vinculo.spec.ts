@@ -8,7 +8,7 @@ const db = createClient(credentials.url, credentials.serviceRole, {
   auth: { persistSession: false },
 });
 const password = `Local-${randomUUID()}!`;
-const evidence = ".superpowers/evidence/comunidade-360";
+const evidence = "evidence/comunidade-360";
 async function login(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel(/e-?mail/i).fill(email);
@@ -178,7 +178,7 @@ test("interface por membro atualiza ao vivo, preserva formulário e convite apli
     // A coluna também descreve a seleção para quem só pode consultar a equipe.
     await customize(page, emails[2]!, "Produtos");
     await page.getByRole("combobox", { name: `Papel de ${emails[2]}` }).click();
-    await page.getByRole("option", { name: "manager", exact: true }).click();
+    await page.getByRole("option", { name: "Gerente", exact: true }).click();
     await expect(page.getByText("Papel atualizado.", { exact: true })).toBeVisible();
     await other.goto("/app/team");
     await expect(other.getByRole("row").filter({ hasText: emails[2] }).getByText("Personalizada", { exact: true })).toBeVisible();

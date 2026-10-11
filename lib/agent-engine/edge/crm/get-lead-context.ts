@@ -15,13 +15,14 @@ import type { Queryable } from '../../queue/queue';
 import type { CrmEdgeConfig } from './mcp-client';
 import { deriveLgpdFromContact, type LgpdInput } from '../../guardrails/lgpd/legal-basis';
 import { isoLocalComOffset } from '@/lib/tempo/agora';
+import { logger } from '@/lib/logger';
 import { nomeDoContato } from '@/lib/contacts/rotulo-do-contato';
 
 /**
  * Heurística conservadora de contagem: ~3,5 chars/token para pt-br (BPE real fica
  * entre 3,5 e 4; dividir por menos SUPERESTIMA tokens — erra pro lado seguro).
  */
-const CHARS_PER_TOKEN = 3.5;
+export const CHARS_PER_TOKEN = 3.5;
 
 export function countPayloadTokens(serialized: string): number {
   return Math.ceil(serialized.length / CHARS_PER_TOKEN);
@@ -73,6 +74,23 @@ export interface UltimaDecisaoHumana {
   at: string;
 }
 
+/**
+ * N7 — o desfecho da última proposta com desfecho real, para o agente não
+ * oferecer de novo o que já foi recusado (nem comemorar o que já foi aceito).
+ *
+ * OPCIONAL no tipo pelo MESMO motivo de `contact_id` (ver acima): exigir
+ * obrigaria a editar fixtures em `tests/invariants/**`, que é congelado. A
+ * produção (getLeadContext) sempre o preenche; quem lê trata ausente como
+ * "sem proposta com desfecho".
+ */
+export interface UltimaProposta {
+  status: string;
+  total_cents: number;
+  decision_reason: string | null;
+  numero: number | null;
+  ano: number | null;
+}
+
 /** Payload curado que o modelo recebe. */
 export interface LeadContext {
   /** ⚠️ É o id do CONTATO, não de um lead do funil. Ver `contact_id` abaixo. */
@@ -94,6 +112,14 @@ export interface LeadContext {
     tags: string[];
     /** contacts.is_blocked lido NESTE turno (fonte da verdade do gate 1). */
     is_blocked: boolean;
+    /**
+     * Spec 21: `contacts.is_personal` lido NESTE turno, ao lado do bloqueio.
+     *
+     * OPCIONAL no tipo pelo mesmo motivo de `contact_id`: exigir obrigaria a
+     * editar fixtures em `tests/invariants/**`, que é congelado. A produção
+     * sempre preenche; quem constrói contexto à mão num teste não precisa.
+     */
+    is_personal?: boolean;
   };
   conversation_id: string | null;
   previous_service?: { label: string; outcomes: string[] };
@@ -108,6 +134,13 @@ export interface LeadContext {
    * diferentes, não alternativas.
    */
   last_human_decision: UltimaDecisaoHumana | null;
+  /**
+   * N7 — desfecho da última proposta com desfecho real (`enviada`, `aceita`,
+   * `recusada`, `vencida`). `null` quando só há rascunho aberto ou nenhuma
+   * proposta: rascunho não é desfecho (pode ser o que o próprio agente acabou
+   * de criar).
+   */
+  last_proposal?: UltimaProposta | null;
   /** Últimas N mensagens, da mais antiga para a mais nova. */
   messages: LeadContextMessage[];
 }
@@ -133,6 +166,8 @@ interface ContactRow {
   phone_number: string | null;
   tags: string[] | null;
   is_blocked: boolean;
+  /** Spec 21: espelha a coluna (o veto de envio e o esconderijo entram na fatia 2). */
+  is_personal: boolean;
   source: string | null;
   consent: Record<string, unknown> | null;
   is_anonymized: boolean;
@@ -183,7 +218,7 @@ export async function getLeadContext(
   knobs: LeadContextKnobs,
 ): Promise<LeadContextResult> {
   const { rows: contactRows } = await db.query<ContactRow>(
-    `select name, display_name, email, phone_number, tags, is_blocked, source, consent, is_anonymized
+    `select name, display_name, email, phone_number, tags, is_blocked, is_personal, source, consent, is_anonymized
      from contacts where organization_id = $1 and id = $2`,
     [input.tenantId, input.leadId],
   );
@@ -195,18 +230,58 @@ export async function getLeadContext(
     );
   }
 
+  // Daqui em diante tudo depende só do contato, e nada depende entre si além da
+  // conversa (histórico e desfechos precisam do id dela). Cada `await` em série
+  // era um RTT ao Supabase remoto antes do modelo responder; em paralelo, o turno
+  // paga o mais lento. São no máximo 4 consultas em voo por contexto, e isso é o
+  // formato das leituras, não um encaixe no pool: com vários chamadores juntos
+  // (os turnos do worker, e também os rascunhos de resposta fora dele) a demanda
+  // passa das 10 conexões do default do pg (knob DB_POOL_MAX). O pg enfileira e
+  // nenhuma destas leituras segura conexão: o pior caso é espera, não erro.
+  //
   // Conversa: a do job quando informada (fonte confiável); senão a 1:1 mais
   // recente do contato. Grupos NUNCA (regra dura nº 12).
-  let conversationId = input.conversationId ?? null;
-  if (conversationId === null) {
-    const { rows } = await db.query<{ id: string }>(
-      `select id from conversations
-       where organization_id = $1 and contact_id = $2 and is_group = false
-       order by last_message_at desc nulls last limit 1`,
-      [input.tenantId, input.leadId],
-    );
-    conversationId = rows[0]?.id ?? null;
-  }
+  const conversaHistoricoEDesfechos = async (): Promise<{
+    conversationId: string | null;
+    history: HistoryRow[];
+    previousOutcomes: Array<{ desfecho: string }>;
+  }> => {
+    let conversationId = input.conversationId ?? null;
+    if (conversationId === null) {
+      const { rows } = await db.query<{ id: string }>(
+        `select id from conversations
+         where organization_id = $1 and contact_id = $2 and is_group = false
+         order by last_message_at desc nulls last limit 1`,
+        [input.tenantId, input.leadId],
+      );
+      conversationId = rows[0]?.id ?? null;
+    }
+    const [history, { rows: previousOutcomes }] = await Promise.all([
+      conversationId
+        ? db
+            .query<HistoryRow>(
+              `select direction, type, body, media_url, media_storage_path, media_mime,
+                      media_derived_text, sent_at
+               from messages
+               where organization_id = $1 and conversation_id = $2
+                 and direction in ('inbound', 'outbound')
+                 and exists(select 1 from conversations c where c.organization_id=$1 and c.id=$2
+                   and ((messages.direction='inbound' and messages.service_revision=c.service_revision
+                     and messages.demanda_id is not distinct from c.current_demanda_id)
+                     or (messages.direction='outbound' and messages.sent_at >= c.service_started_at)))
+               order by sent_at desc, id desc
+               limit $3`,
+              [input.tenantId, conversationId, knobs.historyLimit],
+            )
+            .then((r) => r.rows.reverse())
+        : Promise.resolve<HistoryRow[]>([]),
+      db.query<{ desfecho: string }>(
+        `select distinct d.desfecho from demandas d join demanda_conversas dc on dc.demanda_id=d.id and dc.organization_id=d.organization_id
+         where d.organization_id=$1 and dc.conversation_id=$2 and d.fechada_em is not null limit 5`,
+        [input.tenantId, conversationId]),
+    ]);
+    return { conversationId, history, previousOutcomes };
+  };
 
   // A decisão vem do BARRAMENTO (crm_lead_activities), não de coluna nova: a
   // timeline já é a memória compartilhada entre humano e agente, e foi para isso
@@ -215,36 +290,49 @@ export async function getLeadContext(
   //
   // Filtra por `contact_id` porque deste lado da casa `leadId` é o CONTATO —
   // e é assim que a decisão chega mesmo que o negócio tenha mudado de mãos.
-  const { rows: decisaoRows } = await db.query<DecisionRow>(
-    `select type, payload, reason, performed_at::text as performed_at
-     from crm_lead_activities
-     where organization_id = $1
-       and contact_id = $2
-       and type in ('next_action_approved', 'next_action_dismissed')
-     order by performed_at desc, id desc
-     limit 1`,
-    [input.tenantId, input.leadId],
-  );
-  const lastHumanDecision = decisaoRows[0] ? paraDecisao(decisaoRows[0]) : null;
+  const ultimaDecisao = async (): Promise<UltimaDecisaoHumana | null> => {
+    const { rows: decisaoRows } = await db.query<DecisionRow>(
+      `select type, payload, reason, performed_at::text as performed_at
+       from crm_lead_activities
+       where organization_id = $1
+         and contact_id = $2
+         and type in ('next_action_approved', 'next_action_dismissed')
+       order by performed_at desc, id desc
+       limit 1`,
+      [input.tenantId, input.leadId],
+    );
+    return decisaoRows[0] ? paraDecisao(decisaoRows[0]) : null;
+  };
 
-  const history: HistoryRow[] = conversationId
-    ? (
-        await db.query<HistoryRow>(
-          `select direction, type, body, media_url, media_storage_path, media_mime,
-                  media_derived_text, sent_at
-           from messages
-           where organization_id = $1 and conversation_id = $2
-             and direction in ('inbound', 'outbound')
-             and exists(select 1 from conversations c where c.organization_id=$1 and c.id=$2
-               and ((messages.direction='inbound' and messages.service_revision=c.service_revision
-                 and messages.demanda_id is not distinct from c.current_demanda_id)
-                 or (messages.direction='outbound' and messages.sent_at >= c.service_started_at)))
-           order by sent_at desc, id desc
-           limit $3`,
-          [input.tenantId, conversationId, knobs.historyLimit],
-        )
-      ).rows.reverse()
-    : [];
+  // N7 — o desfecho da última proposta com desfecho real, no contexto do
+  // turno. `leadId` aqui é o CONTATO (ver o comentário da consulta acima) —
+  // por isso o filtro é por `contact_id`, igual ao da decisão humana logo
+  // acima. Rascunho é excluído NO SQL (nunca é "desfecho"). Falha aberta de
+  // propósito: proposta é contexto auxiliar — se esta consulta falhar, o turno
+  // segue sem ela em vez de morrer.
+  const ultimaProposta = async (): Promise<UltimaProposta | null> => {
+    try {
+      const { rows: propostaRows } = await db.query<UltimaProposta>(
+        `select status, total_cents, decision_reason, numero, ano
+           from crm_proposals
+          where organization_id = $1 and contact_id = $2
+            and status in ('enviada', 'aceita', 'recusada', 'vencida')
+          order by created_at desc
+          limit 1`,
+        [input.tenantId, input.leadId],
+      );
+      return propostaRows[0] ?? null;
+    } catch (err) {
+      logger.warn('lead-context: consulta de proposta falhou — contexto segue sem ela', {
+        organizationId: input.tenantId,
+        erro: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  };
+
+  const [{ conversationId, history, previousOutcomes }, lastHumanDecision, last_proposal] =
+    await Promise.all([conversaHistoricoEDesfechos(), ultimaDecisao(), ultimaProposta()]);
 
   // LGPD: base legal derivada DIRETO do contato (fonte da verdade, mesmo banco).
   // isProspecting=false: o MVP é inbound + follow-up — ambos respondem a lead que
@@ -257,11 +345,6 @@ export async function getLeadContext(
     },
     false,
   );
-
-  const { rows: previousOutcomes } = await db.query<{ desfecho: string }>(
-    `select distinct d.desfecho from demandas d join demanda_conversas dc on dc.demanda_id=d.id and dc.organization_id=d.organization_id
-     where d.organization_id=$1 and dc.conversation_id=$2 and d.fechada_em is not null limit 5`,
-    [input.tenantId, conversationId]);
 
   const context = fitToBudget(
     {
@@ -283,9 +366,11 @@ export async function getLeadContext(
         email: contact.email,
         tags: contact.tags ?? [],
         is_blocked: contact.is_blocked,
+        is_personal: contact.is_personal,
       },
       conversation_id: conversationId,
       last_human_decision: lastHumanDecision,
+      last_proposal,
     },
     history,
     knobs.maxTokens,
