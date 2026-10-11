@@ -61,6 +61,10 @@ vi.mock("@/hooks/i18n/useT", () => ({ useT: () => (chave: string) => chave }));
 vi.mock("@/components/connections/ConnectionHealthDot", () => ({
   ConnectionHealthDot: () => null,
 }));
+// O contador de casos lê a fila pelo React Query; aqui não há provider, e o
+// número não é o objeto destes casos (o dele mora em contador-de-casos.test.tsx).
+vi.mock("@/components/shell/ContadorDeCasos", () => ({ ContadorDeCasos: () => null }));
+vi.mock("@/components/shell/ContadorDaFila", () => ({ ContadorDaFila: () => null }));
 vi.mock("@/components/shell/VersionFooter", () => ({ VersionFooter: () => null }));
 
 const usuario = {
@@ -252,6 +256,19 @@ describe("catraca: `branding()` é server-only", () => {
       expect(/\bbranding\(\)/.test(fonte), `${rel} ainda lê o nome só do .env`).toBe(false);
       expect(/\bmarcaDaSaida\(/.test(fonte), `${rel} não lê a marca resolvida`).toBe(true);
     }
+  });
+
+  it("o texto de `branding()` no CÓDIGO continua visível à varredura", () => {
+    // A guarda contra o erro NOVO que o corte por bloco introduz: se o regex de
+    // `/* … */` engolisse código, esta lista esvaziaria e a catraca ficaria verde
+    // por cegueira — o mesmo defeito que ela existe para impedir, do lado do
+    // instrumento. Os três call sites de produto (`app/legal/layout.tsx`,
+    // `lib/legal/operador.ts` e `app/(public)/signup/page.tsx`) saíram pelo
+    // resolvedor do banco, issue #2511; o que resta é a PRÓPRIA DECLARAÇÃO em
+    // `lib/branding.ts`, e ela tem de continuar visível ao corte.
+    const esperados = ["lib/branding.ts"];
+    const vistos = varridos.filter(chamaBranding).map((f) => relativoEmBarraNormal(RAIZ, f));
+    expect(esperados.filter((e) => !vistos.includes(e))).toEqual([]);
   });
 
   it("nenhum componente `\"use client\"` chama `branding()`", () => {

@@ -14,6 +14,9 @@ export default async function WelcomePage() {
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/login");
   const idioma = user.idioma;
+
+  // O nome em texto vem do resolvedor do BANCO (`marcaDaSaida`), não do
+  // `branding()` — que lê só o `.env`. O banco vence; o `.env` é o piso.
   const marca = await marcaDaSaida(null);
 
   const supabase = await createClient();
@@ -38,7 +41,7 @@ export default async function WelcomePage() {
         pessoa ter de apagá-lo antes de escrever o nome dela — e quem não
         percebia seguia com o placeholder no cabeçalho do sistema para sempre.
       */}
-      <WelcomeForm defaultOrgName={retrato.empresa.aindaSemNomeProprio ? "" : activeOrg.name} />
+      <WelcomeForm defaultOrgName={retrato.empresa.aindaSemNomeProprio ? "" : activeOrg.name} orgId={activeOrg.orgId} />
     </div>
   );
 }

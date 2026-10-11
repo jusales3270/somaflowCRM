@@ -3,13 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
 
 /**
- * A casca das telas de acesso — login, cadastro, recuperação, MFA.
+ * A casca das telas de acesso — login, cadastro, recuperação, MFA, confirmar acesso.
  *
  * ── Por que o LOGO mora aqui, e não em `login/page.tsx` ───────────────────────
  *
- * São seis telas no grupo `(public)`, e todas são "antes de entrar": quem instala
+ * São sete telas no grupo `(public)`, e todas são "antes de entrar": quem instala
  * o produto para clientes mostra a marca dele exatamente aí. Um `<img>` por
- * página seriam seis cópias que divergem na primeira vez que alguém mexer numa
+ * página seriam sete cópias que divergem na primeira vez que alguém mexer numa
  * só — e a que ficaria para trás é sempre a que ninguém abre (recuperação de
  * senha, cadastro de MFA), que é justamente onde o cliente do revendedor
  * aparece sozinho e sem contexto.
@@ -28,11 +28,16 @@ import { IdiomaProvider } from "@/lib/i18n/IdiomaProvider";
  * para que `tests/e2e/marca-logo.spec.ts` continue medindo "a fachada está sem
  * `<img>`" como "sem logo do revendedor".
  *
- * O NOME continua saindo de `branding()` dentro de cada página — não é descuido,
- * está medido em `tests/e2e/icone-da-marca.spec.ts:64-77`: aquela spec cruza duas
- * resoluções independentes (o título da aba, que lê o banco, contra o texto sob
- * o "Entrar", que lê o `.env`). Trocar o texto para este mesmo resolvedor
- * deixaria a spec verde medindo nada.
+ * O conteúdo de cada página resolve o próprio nome. A tela de login usa
+ * `marcaDaSaida(null)`, como o título da aba, para que a marca alterada pela
+ * instalação apareça também sob o botão "Entrar"; a casca usa a mesma resolução
+ * para logo e tema.
+ *
+ * Com o login e a aba na MESMA pilha, `tests/e2e/icone-da-marca.spec.ts` deixou
+ * de cruzar duas resoluções independentes: ele só prova que as duas concordam.
+ * O que ancora o nome numa verdade de fora da pilha é o caso "o nome trocado em
+ * /admin/marca…" de `tests/e2e/marca-logo.spec.ts`, que digita o nome na tela e
+ * o confere no login de quem não entrou. Não apague um sem o outro.
  */
 import { ThreeDMarquee } from "@/components/ui/three-d-marquee";
 import { PublicAuthShell } from "@/components/auth/PublicAuthShell";
@@ -45,8 +50,10 @@ import type { MarcaDeSaida } from "@/lib/branding/saida";
  *
  * `<img>` em vez de next/image: a URL é de quem hospeda, e o `next/image` exige
  * allowlist de domínios fechada em BUILD — a imagem pré-buildada recusaria o
- * domínio do operador. Altura fixa e largura livre para não distorcer arte de
- * proporção desconhecida. Os `data-testid` são lidos por `tests/e2e/marca-logo.spec.ts`.
+ * domínio do operador. Teto de altura e de largura, nunca tamanho fixo: arte de
+ * proporção desconhecida não distorce e arquivo pequeno não é ampliado (o do
+ * formulário, 80×192 px, é o que `tests/e2e/marca-logo.spec.ts` mede). Os
+ * `data-testid` são lidos por aquela spec.
  */
 function logoDaFachada(marca: MarcaDeSaida, tamanho: string): React.ReactNode {
   if (!marca.logoUrl && !marca.logoDarkUrl) return null;
@@ -102,8 +109,8 @@ export default async function PublicLayout({ children }: { children: React.React
         </div>
         <PublicAuthShell
           marca={marca}
-          logoGrande={logoDaFachada(marca, "h-[85px] md:h-[110px] max-w-[22rem]")}
-          logoPequeno={logoDaFachada(marca, "h-[67px] max-w-[20rem]")}
+          logoGrande={logoDaFachada(marca, "h-auto max-h-[85px] md:max-h-[110px] max-w-[min(22rem,100%)]")}
+          logoPequeno={logoDaFachada(marca, "h-auto max-h-20 max-w-[12rem]")}
         >
           {children}
         </PublicAuthShell>

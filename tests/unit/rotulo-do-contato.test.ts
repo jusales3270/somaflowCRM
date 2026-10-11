@@ -23,7 +23,7 @@ describe("ehIdentificadorTecnico", () => {
     expect(ehIdentificadorTecnico("Contato 543134@lid")).toBe(true);
     expect(ehIdentificadorTecnico("5531988887777@c.us")).toBe(true);
     expect(ehIdentificadorTecnico("120363@g.us")).toBe(true);
-    expect(ehIdentificadorTecnico("558183647258@s.whatsapp.net")).toBe(true);
+    expect(ehIdentificadorTecnico("5511900000001@s.whatsapp.net")).toBe(true);
   });
 
   it("reconhece o rótulo que o código antigo inventava", () => {
@@ -209,9 +209,9 @@ describe("a sétima cópia não nasce", () => {
       motivo: "nome do CANAL conectado",
     },
     {
-      arquivo: "components/inbox/ConversationListItem.tsx",
-      trecho: "canal?.phone_number ?? canal?.display_name ?? null",
-      motivo: "número da EMPRESA por onde a conversa chegou, não o do cliente",
+      arquivo: "components/connections/RedesSociaisClient.tsx",
+      trecho: "{orfao.display_name ?? orfao.account_id}",
+      motivo: "rótulo do CANAL órfão (channel_sessions), não de contato",
     },
     {
       arquivo: "lib/ai/classifier-models.ts",

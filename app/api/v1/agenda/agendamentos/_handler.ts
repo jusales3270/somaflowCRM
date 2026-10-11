@@ -1,3 +1,4 @@
+import { guardServiceEffect } from "@/lib/atendimento/fronteira-server";
 import { randomUUID } from "node:crypto";
 import type { Json } from "@/lib/database.types";
 /**
@@ -44,6 +45,7 @@ import {
   VINCULO_DE_AGENDAMENTO,
 } from "@/lib/agenda/tipos";
 import { ApiError } from "@/lib/api/types";
+import { comIdempotencia, hashDoCorpo } from "@/lib/api/idempotency";
 import type { Actor, HandlerCtx } from "@/lib/api/handlers/types";
 import { audit } from "@/lib/audit";
 import { roleAtLeast } from "@/lib/auth/types";
@@ -238,7 +240,59 @@ async function exigeDonoDoCompromisso(
   throw new ApiError(403, "appointment_do_colega", undefined, ctx.requestId, RECUSA_DO_COLEGA);
 }
 
+const ENDPOINT_IDEMPOTENCIA_AGENDA = "/api/v1/agenda/agendamentos";
+
+/**
+ * Cria o recibo no handler compartilhado, onde REST e MCP chegam ao mesmo
+ * efeito persistente. Requests externos fornecem a chave pelo header; o
+ * runtime interno deriva uma chave estável do job e do input validado. Claim
+ * muda a cada reclaim e boundary delimita autorização, por isso nenhum dos dois
+ * identifica a operação.
+ */
 export async function marcarAgendamentoHandler(
+  supabase: SB,
+  ctx: HandlerCtx,
+  input: MarcarInput,
+): Promise<Record<string, unknown>> {
+  const chave =
+    ctx.idempotencyKey ??
+    (ctx.sourceJobId ? `agent-job:${ctx.sourceJobId}:${hashDoCorpo(input)}` : null);
+  if (chave === null) return executarCriacaoDeAgendamento(supabase, ctx, input);
+
+  const desfecho = await comIdempotencia({
+    db: supabase,
+    organizationId: ctx.organization_id,
+    endpoint: ENDPOINT_IDEMPOTENCIA_AGENDA,
+    chave,
+    corpo: input,
+    executar: async () => ({
+      resposta: await executarCriacaoDeAgendamento(supabase, ctx, input),
+      status: 201,
+    }),
+  });
+
+  if (desfecho.tipo === "conflito") {
+    throw new ApiError(
+      409,
+      "idempotency_conflict",
+      undefined,
+      ctx.requestId,
+      "Esta chave de idempotência já foi usada com outro conteúdo.",
+    );
+  }
+  if (desfecho.tipo === "em_curso") {
+    throw new ApiError(
+      409,
+      "idempotency_in_progress",
+      undefined,
+      ctx.requestId,
+      "A mesma requisição ainda está em curso. Tente de novo em instantes.",
+    );
+  }
+  return desfecho.resposta;
+}
+
+async function executarCriacaoDeAgendamento(
   supabase: SB,
   ctx: HandlerCtx,
   input: MarcarInput,
@@ -345,6 +399,8 @@ export async function marcarAgendamentoHandler(
   }
   const delivery = booking ? { state:"waiting_for_link",generation:randomUUID(),service_boundary:booking.boundary,source_operation_id:booking.sourceJobId,
     booking_claim:booking.claim,authorized_by:{kind:ctx.actor.type,id:ctx.actor.id} } : {state:"none"};
+  // A consulta pode esperar rede. Revalidar o turno depois dela, antes da escrita.
+  await guardServiceEffect();
   const { data: criado, error: erroInsert } = await supabase
     .from("calendar_appointments")
     .insert({
@@ -1174,6 +1230,7 @@ async function leadAtivoDoContato(
 }
 
 async function alteraComRevisao(supabase:SB,ctx:HandlerCtx,id:string,revision:number,patch:Record<string,unknown>):Promise<Record<string,unknown>> {
+  await guardServiceEffect();
   const {data,error}=await supabase.rpc("fn_appointment_change",{p_org:ctx.organization_id,p_id:id,p_revision:revision,p_patch:patch});
   if(error) throw new ApiError(error.code === "40001" ? 409 : error.code === "42501" ? 403 : error.code === "P0002" ? 404 : 422,
     error.code === "40001" ? "conflict" : error.code === "42501" ? "forbidden" : error.code === "P0002" ? "not_found" : "validation_failed",undefined,ctx.requestId,

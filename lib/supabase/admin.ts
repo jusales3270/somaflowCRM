@@ -19,25 +19,42 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 import { isDevSupabaseFallbackActive, devSupabaseFetch } from "@/lib/supabase/dev-adapter";
+import { fetchDoServidor } from "@/lib/supabase/fetch-do-servidor";
+import { urlDoSupabaseNoServidor } from "@/lib/supabase/url-do-servidor";
 
 let _admin: SupabaseClient | null = null;
 
 export function createAdminClient(): SupabaseClient {
   if (_admin) return _admin;
 
-  _admin = createSupabaseClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-      detectSessionInUrl: false,
-    },
-    global: {
-      headers: {
-        "X-Client-Info": "deskcomm-crm/admin",
+  _admin = createSupabaseClient(
+    // #1082: base na URL pública (origem dos links que este client gera) e o
+    // endereço interno só no transporte, no `global.fetch` — mesma regra de
+    // `lib/supabase/server.ts`.
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+        detectSessionInUrl: false,
       },
-      fetch: isDevSupabaseFallbackActive() ? devSupabaseFetch : undefined,
+      global: {
+        // SomaFlow: o adaptador de dados de demonstração (opt-in, só em dev) ocupa o
+        // MESMO ponto que o transporte interno do upstream. Antes ele estava num
+        // `fetch` de nível errado das opções, que o supabase-js ignora — nunca valeu aqui.
+        fetch: isDevSupabaseFallbackActive()
+          ? devSupabaseFetch
+          : fetchDoServidor(
+              urlDoSupabaseNoServidor(env.SUPABASE_SERVER_URL, env.NEXT_PUBLIC_SUPABASE_URL),
+              env.NEXT_PUBLIC_SUPABASE_URL,
+            ),
+        headers: {
+          "X-Client-Info": "deskcomm-crm/admin",
+        },
+      },
     },
-  });
+  );
 
   return _admin;
 }

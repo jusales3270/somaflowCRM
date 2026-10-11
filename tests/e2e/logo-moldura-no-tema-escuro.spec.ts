@@ -655,12 +655,19 @@ test.describe("a moldura do logo no tema escuro", () => {
       urlClara!,
     );
     // SomaFlow: o logo padrão volta à prévia escura SEM o chip claro do upstream
-    // (decisão de marca do dono do produto, 2026-09-26).
-    expect(
-      fundoETransparente(
-        (await medirMoldura(page.locator("[data-previa-do-logo='escuro'] img"))).fundo,
-      ),
-    ).toBe(true);
+    // (decisão de marca do dono do produto, 2026-09-26). Poll, não leitura única:
+    // o re-render do refresh do remover() chega ~80ms depois do src (#1218 do upstream).
+    await expect
+      .poll(
+        async () => {
+          const m = await medirMoldura(page.locator("[data-previa-do-logo='escuro'] img"));
+          return fundoETransparente(m.fundo)
+            ? "sem moldura"
+            : `${m.fundo} em <${m.tagDoPai} class="${m.classeDoPai}">`;
+        },
+        { message: "a prévia escura pintou moldura atrás do logo (o SomaFlow decidiu sem ela)", timeout: 5_000 },
+      )
+      .toBe("sem moldura");
     await page.reload();
     await expect(page.locator("[data-previa-do-logo='claro'] img")).toHaveAttribute(
       "src",

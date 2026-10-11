@@ -38,7 +38,7 @@ import { carregarEnvLocal } from "../../scripts/lib/env-de-teste";
 
 const CREDS_PATH = path.join(process.cwd(), ".e2e-creds.json");
 const EVIDENCIA =
-  process.env.E2E_EVIDENCIA ?? path.join(process.cwd(), ".superpowers/evidence/lote-no-funil");
+  process.env.E2E_EVIDENCIA ?? path.join(process.cwd(), "evidence/lote-no-funil");
 /** A prova do toque é citada na triagem do #911: mora em `evidence/`, versionada. */
 const EVIDENCIA_TOQUE =
   process.env.E2E_EVIDENCIA_TOQUE ?? path.join(process.cwd(), "evidence/excluir-card-no-toque");
@@ -514,7 +514,12 @@ test.describe("Quadro do funil — agir em vários cards de uma vez", () => {
         el.scrollTop = el.scrollHeight;
       });
       const cabecalho = coluna(page, etapaOrigemId).locator("[data-cabecalho-da-etapa]");
-      await expect(cabecalho.getByRole("heading", { name: "Origem" })).toBeInViewport();
+      // Quem entra aqui é manager: para ele o nome da etapa é o campo
+      // editável do cabeçalho (#1738), não um <h2>. É o nome que tem de
+      // ficar à vista, qualquer que seja o elemento que o carrega.
+      const nomeDaEtapa = cabecalho.getByTestId("nome-etapa-quadro");
+      await expect(nomeDaEtapa).toHaveValue("Origem");
+      await expect(nomeDaEtapa).toBeInViewport();
       const topoDoCabecalho = (await cabecalho.boundingBox())!.y;
       const topoDoQuadro = (await quadro.boundingBox())!.y;
       expect(

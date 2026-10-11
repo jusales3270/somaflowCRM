@@ -88,6 +88,12 @@ function seedOrg(org: string, user: string, sess: string, tag: string): string {
 }
 
 beforeAll(() => {
+  // O módulo financeiro INSTALADO antes de semear (#1907, item 3): as cinco
+  // tabelas da comanda saíram do `baseline.sql` e nascem na provisionadora
+  // (ADR-0002 D2/D3). Sem esta chamada as linhas de `sales`/`sale_items` do
+  // seed morrem com `relation "sales" does not exist` — e a D8 manda a
+  // varredura rodar num banco COM o módulo, não perder a cobertura.
+  sql("select public.fn_financeiro_provisionar();");
   sql(seedOrg(ORG_A, USER_A, SESS_A, "a") + seedOrg(ORG_B, USER_B, SESS_B, "b"));
   // Contact → conversation → message + pipeline → stage → lead, per org.
   sql(`
@@ -103,6 +109,7 @@ beforeAll(() => {
       v_version uuid;
       v_case uuid;
       v_boundary jsonb;
+      v_proposta uuid;
       v_attendant uuid;
       v_account uuid;
       v_method uuid;
@@ -110,6 +117,9 @@ beforeAll(() => {
       v_sale uuid;
       v_camp    uuid;
       v_sale_item uuid;
+      v_empresa uuid;
+      v_pessoa uuid;
+      v_lote uuid;
     begin
       foreach v_org in array array['${ORG_A}'::uuid, '${ORG_B}'::uuid] loop
         select id into v_sess from public.channel_sessions where organization_id = v_org limit 1;
@@ -235,6 +245,32 @@ beforeAll(() => {
         if not exists (select 1 from public.crm_leads where organization_id = v_org) then
           insert into public.crm_leads (organization_id, pipeline_id, stage_id, title)
             values (v_org, v_pipe, v_stage, 'RLS invariant lead');
+        end if;
+
+        -- crm_proposals/crm_proposal_items (migration 0464): a proposta comercial.
+        -- crm_proposal_items tem organization_id próprio, com trigger de
+        -- consistência contra crm_proposals.organization_id
+        -- (fn_verificar_org_do_item_da_proposta) — o insert abaixo usa v_org nos
+        -- dois lados de propósito, para não bater na trava. Select-then-if-null-
+        -- insert, mesmo padrão de v_pipe/v_stage acima: precisa de v_proposta
+        -- preenchido em toda passada do loop (o seed roda 2x, uma por org), não
+        -- só na primeira.
+        select id into v_proposta from public.crm_proposals
+          where organization_id = v_org and titulo = 'RLS invariant proposal';
+        if v_proposta is null then
+          insert into public.crm_proposals
+            (organization_id, lead_id, contact_id, titulo, total_cents)
+          select v_org, id, v_contact, 'RLS invariant proposal', 1000
+          from public.crm_leads where organization_id = v_org limit 1
+          returning id into v_proposta;
+        end if;
+
+        if not exists (
+          select 1 from public.crm_proposal_items where proposal_id = v_proposta
+        ) then
+          insert into public.crm_proposal_items
+            (proposal_id, organization_id, descricao, quantidade, preco_unitario_cents, position)
+          values (v_proposta, v_org, 'RLS invariant item', 1, 1000, 1000);
         end if;
 
         if not exists (select 1 from public.org_guardrail_layers where organization_id = v_org) then
@@ -499,6 +535,47 @@ beforeAll(() => {
             (organization_id, campaign_id, channel_session_id)
             values (v_org, v_camp, v_sess);
         end if;
+        -- migration 0448 (metade B2B do #1621): empresa, pessoa que decide, o
+        -- vínculo entre as duas e o lote de planilha com a sua linha. A linha
+        -- importada guarda o texto cru da planilha (nome e telefone de gente),
+        -- e a pessoa é gente: vazar qualquer uma entrega ao vizinho a carteira
+        -- de clientes B2B da organização. Select-then-insert: o seed roda uma
+        -- vez por organização e cada passada precisa das próprias ids.
+        select id into v_empresa from public.companies
+          where organization_id = v_org and trade_name = 'RLS invariant empresa';
+        if v_empresa is null then
+          insert into public.companies (organization_id, trade_name)
+            values (v_org, 'RLS invariant empresa') returning id into v_empresa;
+        end if;
+        select id into v_pessoa from public.people
+          where organization_id = v_org and full_name = 'RLS invariant pessoa';
+        if v_pessoa is null then
+          insert into public.people (organization_id, full_name)
+            values (v_org, 'RLS invariant pessoa') returning id into v_pessoa;
+        end if;
+        insert into public.company_people (organization_id, company_id, person_id)
+          values (v_org, v_empresa, v_pessoa)
+          on conflict (company_id, person_id) do nothing;
+        select id into v_lote from public.import_batches
+          where organization_id = v_org and filename = 'rls-invariant.csv';
+        if v_lote is null then
+          insert into public.import_batches (organization_id, filename)
+            values (v_org, 'rls-invariant.csv') returning id into v_lote;
+        end if;
+        insert into public.import_rows (organization_id, batch_id, row_number, raw_data)
+          values (v_org, v_lote, 2, '{"nome": "RLS invariant"}'::jsonb)
+          on conflict (batch_id, row_number) do nothing;
+
+        -- migration 0626 (#2388): a janela de manutencao de conexoes. Vazar a
+        -- linha entrega ao vizinho os horarios em que o outro vai mexer nas
+        -- conexoes dele e o canal alvo da janela — e a retomada programada
+        -- passaria a ser do vizinho. Select-then-insert, como as irmas acima.
+        if not exists (select 1 from public.channel_schedules where organization_id = v_org) then
+          insert into public.channel_schedules
+            (organization_id, channel_session_id, starts_at, ends_at)
+          values
+            (v_org, v_sess, timestamptz '2030-01-01 03:00:00+00', timestamptz '2030-01-01 05:00:00+00');
+        end if;
       end loop;
     end
     $seed$;
@@ -548,6 +625,14 @@ export const TABLES = [
   // controle positivo passaria por acerto. Quem mede a escrita é a rota, em
   // `tests/unit/tarefas-rota-nao-tem-porta-dos-fundos.test.ts`.
   "crm_tasks",
+  // migration 0464 — a proposta comercial. Read/write org-scoped sem gate de
+  // papel além de fn_role_at_least('agent'); o gate de ENVIO (manager) é
+  // medido na rota, não aqui (mesmo eixo separado de catalog_products acima).
+  "crm_proposals",
+  // crm_proposal_items tem organization_id próprio, com trigger de
+  // consistência contra crm_proposals.organization_id. Confirmado com o
+  // insert do seed acima, que usa a mesma org nos dois lados.
+  "crm_proposal_items",
   // 0227 — texto de sugestões: org + visibilidade da conversa por authenticated.
   "ai_reply_drafts",
   // migration 0349 — credenciais do trunk SIP por organizacao. Leitura e
@@ -648,6 +733,24 @@ export const TABLES = [
   // entrada abre por `?rascunho=`), então o `agent` semeado aqui é controle
   // positivo legítimo e a policy `for all` cobre também o UPDATE do consumo.
   "conversation_drafts",
+  // migration 0448 (metade B2B do #1621) — as cinco tabelas do módulo de
+  // empresas. Leitura org-flat; a escrita por papel (manager cria, agent
+  // edita) é medida em tests/invariants/companies-people-rls.test.ts.
+  "companies",
+  "people",
+  "company_people",
+  "import_batches",
+  "import_rows",
+  // migration 0626 (#2388) — a janela de manutenção de conexões: horários e
+  // canal alvo. Leitura org-flat (o dono enxerga as próprias janelas na tela
+  // de Conexões); a escrita é do admin e do servidor, e o cron aplica pela
+  // RPC. Vazar a linha entrega ao vizinho quando o outro vai mexer nas
+  // conexões dele — e a retomada programada passaria a ser do vizinho.
+  "channel_schedules",
+  // ⚠️ `cobranca_assinaturas` (migration 0583) NÃO entra nesta lista, pelo mesmo
+  // motivo de `webhook_lead_captures`: a leitura é só do `admin` e o usuário
+  // semeado aqui é `agent`, então o controle positivo falharia por ACERTO. A
+  // prova vive em `tests/invariants/cobranca-isolamento.test.ts`.
 ] as const;
 
 describe("RLS tenant isolation (fn_user_org_ids pattern)", () => {

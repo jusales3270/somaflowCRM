@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { toggleSidebar } from "@/app/actions/shell/toggleSidebar";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { ConnectionHealthDot } from "@/components/connections/ConnectionHealthDot";
+import { ContadorDeCasos } from "@/components/shell/ContadorDeCasos";
+import { ContadorDaFila } from "@/components/shell/ContadorDaFila";
 import { VersionFooter } from "@/components/shell/VersionFooter";
 import { LogotipoDoProduto, SimboloDoProduto } from "@/components/branding/MarcaDoProduto";
 import { DEFAULT_LOGO_URL, marcaEhADoProduto } from "@/lib/branding";
@@ -46,6 +48,7 @@ export function SidebarContent({
     activeOrg?.role ?? null,
     activeOrg?.interface_settings,
     activeOrg?.modulos_ligados ?? [],
+    activeOrg?.capacidades_ligadas ?? [],
   );
   // Configurações sai da área que rola e vai para o rodapé fixo: medido em
   // 1280x768, ele caía fora da dobra mesmo em telas de 1080px.
@@ -134,8 +137,11 @@ export function SidebarContent({
           // SomaFlow: logo + "CRM" ao lado, SEM o chip claro que o upstream põe
           // atrás do logo no tema escuro — decisão de marca do dono do produto
           // (o logo SomaFlow é desenhado para ficar direto sobre o fundo).
-          <div className="flex items-center gap-2">
-            <div>
+          // `min-w-0` nos dois níveis: item de flex não encolhe abaixo do
+          // `min-width: auto`, e uma arte própria larga empurraria o botão de
+          // recolher para fora da barra em vez de encolher (#2723 no upstream).
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0">
               {/* <img> em vez de next/image de propósito: a URL vem de quem hospeda
               (banco ou .env), e next/image exige allowlist de domínios fechada em
               build — a imagem pré-buildada rejeitaria o domínio do self-hoster.
@@ -147,19 +153,24 @@ export function SidebarContent({
                   src={logo}
                   alt={nome}
                   className={cn(
-                    "h-[36px] w-auto max-w-[9.5rem] object-contain",
+                    // Um único `min()` como teto: `max-w-[10rem]` + `max-w-full`
+                    // disputariam a mesma propriedade e só um sobreviveria.
+                    "h-[36px] w-auto max-w-[min(10rem,100%)] object-contain",
                     logoEscuro && "dark:hidden",
                   )}
                 />
               ) : (
-                <span className="dark:hidden">{nome}</span>
+                // `truncate` + `title`: nome longo numa linha, com o nome inteiro no tooltip.
+                <span className="block min-w-0 truncate dark:hidden" title={nome}>
+                  {nome}
+                </span>
               )}
               {logoEscuro ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={logoEscuro}
                   alt={nome}
-                  className="hidden h-[36px] w-auto max-w-[9.5rem] object-contain dark:block"
+                  className="hidden h-[36px] w-auto max-w-[min(10rem,100%)] object-contain dark:block"
                 />
               ) : null}
             </div>
@@ -181,7 +192,15 @@ export function SidebarContent({
             <LogotipoDoProduto nome={nome} className="h-8 w-auto" />
           )
         ) : (
-          <span className={cn("font-semibold tracking-tight", collapsed && "sr-only")}>{nome}</span>
+          <span
+            className={cn(
+              "min-w-0 truncate font-semibold tracking-tight",
+              collapsed && "sr-only",
+            )}
+            title={nome}
+          >
+            {nome}
+          </span>
         )}
         {collapsed && !marcaDoProduto && (
           <span aria-hidden className="text-lg font-bold text-primary">
@@ -192,7 +211,32 @@ export function SidebarContent({
             {[...nome][0]?.toUpperCase() ?? brand.initial}
           </span>
         )}
+        {/* Issue #2722 — o controle de recolher mora no ALTO, como no
+            mercado: na linha da logo, à direita, quando a barra está aberta. */}
+        {showCollapseControl && !collapsed && (
+          // `shrink-0`: sem isso o botão é o primeiro a ser espremido quando a
+          // marca é larga — e ele é o controle, não sobra.
+          <div className="ml-auto shrink-0 pl-2">
+            <BotaoDeRecolher
+              collapsed={false}
+              isPending={isPending}
+              soIcone
+              onClick={() => startTransition(() => toggleSidebar(collapsed))}
+            />
+          </div>
+        )}
       </div>
+      {/* Issue #2722 — no trilho recolhido (64px) não cabe controle ao lado
+          do símbolo: ele vira uma faixa imediatamente abaixo da marca. */}
+      {showCollapseControl && collapsed && (
+        <div className="border-b px-2 py-1">
+          <BotaoDeRecolher
+            collapsed
+            isPending={isPending}
+            onClick={() => startTransition(() => toggleSidebar(collapsed))}
+          />
+        </div>
+      )}
       {/*
         A DENSIDADE É MEDIDA, NÃO ESTÉTICA.
 
@@ -302,6 +346,8 @@ export function SidebarContent({
                               className={cn(collapsed ? "absolute top-1.5 right-1.5" : "ml-auto")}
                             />
                           )}
+                          {item.contador === "casos" && <ContadorDeCasos compacto={collapsed} />}
+                          {item.contador === "fila" && <ContadorDaFila compacto={collapsed} />}
                         </Link>
                       </li>
                     );
@@ -352,27 +398,59 @@ export function SidebarContent({
           </Link>
         )}
         <VersionFooter collapsed={collapsed} onNavigate={onNavigate} />
-        {showCollapseControl && (
-          <button
-            type="button"
-            onClick={() => startTransition(() => toggleSidebar(collapsed))}
-            disabled={isPending}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground",
-              collapsed && "justify-center px-2",
-            )}
-            aria-label={collapsed ? t("Expandir sidebar") : t("Recolher sidebar")}
-          >
-            {collapsed ? (
-              <CaretDoubleRight size={14} aria-hidden />
-            ) : (
-              <CaretDoubleLeft size={14} aria-hidden />
-            )}
-            {!collapsed && <span>{t("Recolher")}</span>}
-          </button>
-        )}
       </div>
     </>
+  );
+}
+
+/**
+ * Issue #2722 — o MESMO controle de antes (classes, `toggleSidebar` via
+ * `startTransition`, `isPending`, `aria-label` Recolher/Expandir), só que no
+ * ALTO: na linha da logo quando aberta (padrão de mercado), e numa faixa sob
+ * o símbolo quando recolhida — os 64px do trilho não comportam botão ao lado
+ * da marca sem espremer.
+ */
+function BotaoDeRecolher({
+  collapsed,
+  isPending,
+  onClick,
+  soIcone = false,
+}: {
+  collapsed: boolean;
+  isPending: boolean;
+  onClick: () => void;
+  /**
+   * Barra aberta, sem o rótulo. O review mediu (#2723) que o rótulo custa
+   * ~54px de uma linha com ~207px úteis, e uma logo-palavra de 5:1 (140px)
+   * já estourava por causa disso. Só o ícone devolve ~161px para a marca.
+   *
+   * Acessibilidade não muda: o `aria-label` é o mesmo ("Recolher sidebar"),
+   * e o `title` cobre o hover para quem só enxerga o desenho.
+   */
+  soIcone?: boolean;
+}) {
+  const t = useT();
+  // Um rótulo só para `aria-label` e `title`: os dois nomeiam a MESMA ação.
+  const rotulo = collapsed ? t("Expandir sidebar") : t("Recolher sidebar");
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isPending}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+        (collapsed || soIcone) && "justify-center px-2",
+      )}
+      aria-label={rotulo}
+      title={collapsed || soIcone ? rotulo : undefined}
+    >
+      {collapsed ? (
+        <CaretDoubleRight size={14} aria-hidden />
+      ) : (
+        <CaretDoubleLeft size={14} aria-hidden />
+      )}
+      {!collapsed && !soIcone && <span>{t("Recolher")}</span>}
+    </button>
   );
 }
 
@@ -393,13 +471,24 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
         // que é a assinatura de servidor e navegador terem pintado estados
         // diferentes — e `AppShell` e `Sidebar` são ambos `"use client"`.
         //
-        // `sticky top-0 h-screen` dá o mesmo efeito visual (a barra não rola com
+        // `sticky top-0 h-dvh` dá o mesmo efeito visual (a barra não rola com
         // a página) e ela VOLTA a ocupar lugar: sobra para o conteúdo exatamente
         // o que ela não usou, e não há segunda medida para discordar.
         //
+        // `h-dvh` e não `h-screen`: `100vh` é a janela com a barra de endereço
+        // RECOLHIDA, e o navegador nunca corrige esse valor. No tablet entre 768
+        // e 1023px — onde esta barra JÁ aparece, porque a casca a mostra a partir
+        // de `md` — a barra media mais que a janela e o fim dela ficava fora do
+        // alcance. `dvh` acompanha a barra do navegador aparecendo e sumindo.
+        // Princípio 2 de `docs/design-system/screen-flow/07-responsive-strategy.md`.
+        //
         // `shrink-0` porque item de flex encolhe por padrão, e uma barra de 60
         // espremida para caber é o mesmo defeito por outro caminho.
-        "sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r bg-card transition-[width] duration-200",
+        //
+        // `duration-base` em vez do `duration-200` literal: 200ms é o mesmo
+        // número, mas vindo de `--duration-base`. A Lei de movimento fecha a
+        // tabela de durações, e número solto é o que a faz apodrecer.
+        "sticky top-0 z-30 flex h-dvh shrink-0 flex-col border-r bg-card transition-[width] duration-base",
         collapsed ? "w-16" : "w-60",
       )}
     >

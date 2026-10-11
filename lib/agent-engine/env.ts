@@ -20,6 +20,20 @@ const envSchema = z.object({
   // Supabase API — os handlers do app (sendMessageHandler) exigem o client
   // service-role. Mesmos valores do .env.local do app.
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
+  // Endereço do Supabase PARA O WORKER, e só para ele (issue #1082). Vazio =
+  // vale a pública acima, que é o estado de toda instalação existente. Quem
+  // resolve a precedência é `urlDoSupabaseNoServidor`
+  // (lib/supabase/url-do-servidor.ts) — o mesmo módulo do app, para que os dois
+  // runtimes não possam divergir sobre qual vale. Este schema NÃO importa o
+  // módulo de propósito: ele é puro justamente para não arrastar nada do app
+  // para o boot do worker.
+  //
+  // `z.string()` e NÃO `.url()`: `lib/agent-engine/env.ts` LANÇA no boot quando o
+  // schema recusa, e um espaço sobrando no `.env` derrubaria o worker inteiro com
+  // um erro que não diz o que fazer. O mesmo motivo de `AI_BUDGET_ENFORCEMENT`
+  // (ver o comentário longo daquela chave): valor irreconhecível degrada com
+  // aviso, no resolvedor.
+  SUPABASE_SERVER_URL: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   // Chave LLM de plataforma (fallback quando a org não tem BYOK em
   // ai_provider_credentials). Opcional no boot: sem ela e sem BYOK, o turno
@@ -41,8 +55,13 @@ const envSchema = z.object({
   // Consertar a irmã da OpenAI e deixar esta é o modo de falha desta família:
   // ao mexer aqui, confira as três de uma vez.
   OPENROUTER_API_KEY: z.string().min(1).optional(),
-  // Modelo default do agente quando a org não define o dela (knob, nunca constante).
-  AGENT_DEFAULT_MODEL: z.string().min(1).default('claude-sonnet-4-5'),
+  // `AGENT_DEFAULT_MODEL` morava aqui, com `.default('claude-sonnet-4-5')` —
+  // um default da Anthropic escrito no schema de ambiente de um produto que
+  // também opera com OpenAI. NÃO EXISTIA CONSUMIDOR: nem `loadEnv` nem
+  // `llmEdgeConfigFromEnv` liam a chave, o Zod a parseava e ninguém a usava.
+  // Era puro default silencioso de documentar e de confundir quem fosse
+  // procurar o modelo efetivo (issue #2377). Saiu; o modelo de um agente vem de
+  // `ai_agents.model` e o do ponto vem do painel de provedores.
   // Teto de conexões por pool do pg. Sem valor = pg decide (default 10).
   DB_POOL_MAX: z.coerce.number().int().positive().optional(),
   // Knobs da fila. (Esta linha já afirmou "documentados no .env.example" quando
@@ -127,6 +146,11 @@ const envSchema = z.object({
   // Coalescência de rajada inbound: mensagens do MESMO contato dentro desta
   // janela viram UM job (responder em rajada é gatilho de ban). 0 = sem debounce.
   INBOUND_DEBOUNCE_MS: z.coerce.number().int().min(0).default(8_000),
+  // Resposta obsoleta: o cliente escreveu de novo enquanto o turno pensava → a
+  // resposta desatualizada não sai e o turno seguinte responde a tudo junto,
+  // enquanto a mensagem mais antiga sem resposta tiver menos que isto. 0 = desliga.
+  // Ver `respostaFicouObsoleta` (agent/turno-ja-respondido.ts).
+  RESPOSTA_OBSOLETA_TETO_MS: z.coerce.number().int().min(0).default(120_000),
   // Circuito de saúde do número — ritmo do ticker (block/response rate por número).
   NUMBER_HEALTH_INTERVAL_MS: z.coerce.number().int().positive().default(300_000),
   // Cron persistente por contato — knobs, nunca constantes.
@@ -198,7 +222,9 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
-  // Classificadores auxiliares (modelo BARATO; sem valor = default da org).
+  // Classificadores auxiliares. Sem valor = o modelo econômico do provedor do
+  // agente (`PONTOS_DE_TIER_ECONOMICO` em lib/ai/pontos/resolver.ts), com o do
+  // agente como reserva. Preenchido = esse modelo, no provider default da org.
   STAGE_CLASSIFIER_MODEL: z.string().min(1).optional(),
   JAILBREAK_CLASSIFIER_MODEL: z.string().min(1).optional(),
   // Camada SEMÂNTICA de promessa na cadeia before_send (1 chamada por envio quando on).

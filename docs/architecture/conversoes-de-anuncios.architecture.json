@@ -21,7 +21,15 @@
       "label": "Dados"
     }
   ],
-  "mainPath": ["funil", "eventos", "handler", "transporte", "registro", "tela", "retry"],
+  "mainPath": [
+    "funil",
+    "eventos",
+    "handler",
+    "transporte",
+    "registro",
+    "tela",
+    "retry"
+  ],
   "nodes": [
     {
       "id": "origem",
@@ -115,6 +123,13 @@
       "label": "conversoes.qualificacao"
     },
     {
+      "id": "etapa-meta",
+      "lane": "motor",
+      "col": 4,
+      "type": "component",
+      "label": "conversoes.etapa_meta"
+    },
+    {
       "id": "site",
       "lane": "tela",
       "col": 0,
@@ -127,6 +142,34 @@
       "col": 1,
       "type": "component",
       "label": "Script público v1: origem da visita"
+    },
+    {
+      "id": "canal",
+      "lane": "motor",
+      "col": 6,
+      "type": "component",
+      "label": "Canal da conversa com a ponte (reportConversion)"
+    },
+    {
+      "id": "links",
+      "lane": "tela",
+      "col": 0,
+      "type": "component",
+      "label": "Links rastreáveis: cadastro e métricas"
+    },
+    {
+      "id": "refs",
+      "lane": "dados",
+      "col": 1,
+      "type": "component",
+      "label": "ad_tracking_links + click_refs"
+    },
+    {
+      "id": "regras-meta",
+      "lane": "dados",
+      "col": 5,
+      "type": "component",
+      "label": "meta_ads_conversion_rules"
     }
   ],
   "edges": [
@@ -249,6 +292,72 @@
       "from": "script",
       "to": "captura",
       "label": "clique no número configurado"
+    },
+    {
+      "id": "e20",
+      "from": "handler",
+      "to": "canal",
+      "label": "sem conexão direta: pergunta pela capacidade"
+    },
+    {
+      "id": "e21",
+      "from": "canal",
+      "to": "registro",
+      "label": "resultado pelo handler"
+    },
+    {
+      "id": "links-config",
+      "from": "links",
+      "to": "refs",
+      "label": "admin / organização / auditoria"
+    },
+    {
+      "id": "links-script",
+      "from": "links",
+      "to": "script",
+      "label": "snippet por link"
+    },
+    {
+      "id": "links-capture",
+      "from": "script",
+      "to": "refs",
+      "label": "clique público / ref"
+    },
+    {
+      "id": "links-origin",
+      "from": "refs",
+      "to": "origem",
+      "label": "ref na mensagem"
+    },
+    {
+      "id": "links-metrics",
+      "from": "refs",
+      "to": "links",
+      "label": "métricas retidas / corrigir ou desativar"
+    },
+    {
+      "id": "meta-etapa-evento",
+      "from": "eventos",
+      "to": "etapa-meta",
+      "label": "stage_changed / retry_requested"
+    },
+    {
+      "id": "meta-etapa-regra",
+      "from": "regras-meta",
+      "to": "etapa-meta",
+      "label": "evento padrão por etapa"
+    },
+    {
+      "id": "meta-etapa-envio",
+      "from": "etapa-meta",
+      "to": "handler",
+      "label": "envio compartilhado sem valor"
+    },
+    {
+      "id": "meta-etapa-tela",
+      "from": "tela",
+      "to": "regras-meta",
+      "label": "O que cada etapa informa à Meta"
     }
   ]
 }

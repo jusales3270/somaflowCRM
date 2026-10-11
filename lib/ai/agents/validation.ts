@@ -8,6 +8,7 @@
  * Postgres function (defense in depth).
  */
 import { z } from "zod";
+import { ehToolIdRemoto } from "@/lib/mcp/servidor-externo/ids";
 import { VALID_TOOL_IDS } from "@/lib/mcp/tools/catalog";
 import { TETO_TOOLS_POR_AGENTE } from "@/lib/mcp/tools/selecao-por-pacote";
 import { IDS_DE_PROVEDOR } from "@/lib/ai/pontos/provedores";
@@ -37,6 +38,10 @@ const triggerConfigSchema = z
             start: z.string(),
             end: z.string(),
             weekdays: z.array(z.number().int().min(0).max(6)),
+            // Aviso de fora do horário (#1926). Sem esta linha o Zod descarta o
+            // campo ao salvar e o aviso nunca liga pela tela. O teto é o mesmo
+            // de TAMANHO_MAXIMO_DO_TEXTO em aviso-fora-do-horario.ts.
+            notice: z.string().max(1000).nullable().optional(),
           })
           .nullable()
           .optional()
@@ -82,6 +87,7 @@ const followupConfigObjectSchema = z
     enabled: z.boolean().default(false),
     flow_pointer_ids: z.array(UUID).max(20).default([]),
     send_window: followupSendWindowSchema.nullable().optional().default(null),
+    callback_enabled: z.boolean().optional(),
   })
   .strict();
 
@@ -96,6 +102,7 @@ const followupPatchSchema = followupConfigObjectSchema
     enabled: followupConfigObjectSchema.shape.enabled.removeDefault(),
     flow_pointer_ids: followupConfigObjectSchema.shape.flow_pointer_ids.removeDefault(),
     send_window: followupConfigObjectSchema.shape.send_window.removeDefault(),
+    callback_enabled: followupConfigObjectSchema.shape.callback_enabled,
   })
   .partial();
 
@@ -125,13 +132,19 @@ const versionShapeSchema = z
      */
     credential_id: UUID.nullable(),
     tool_ids: z
-      .array(z.string().min(1).max(80))
+      .array(z.string().min(1).max(120))
       // O mesmo teto que a tela mostra ("13 de 20") é o que o servidor recusa —
       // ver `lib/mcp/tools/selecao-por-pacote.ts` para o porquê do número.
       .max(TETO_TOOLS_POR_AGENTE)
       .default([])
+      // Catálogo compilado OU ferramenta remota escolhida pelo agente (item 6,
+      // `mcp_externo:<leitura|escrita>:<nome>`): recusar a remota aqui faria a
+      // tela salvar e a publicação devolver `tool_id_invalid`.
       .refine(
-        (ids) => ids.every((id) => (VALID_TOOL_IDS as readonly string[]).includes(id)),
+        (ids) =>
+          ids.every((id) =>
+            ehToolIdRemoto(id) || (VALID_TOOL_IDS as readonly string[]).includes(id),
+          ),
         { message: "tool_id_invalid" },
       ),
     trigger_config: triggerConfigSchema.optional(),
@@ -161,11 +174,26 @@ const versionShapeSchema = z
       .max(20)
       .default(["falar com humano", "atendente", "pessoa real"]),
     handoff_tool_enabled: z.boolean().default(true),
+    // Passar para uma pessoa por ASSUNTO JURÍDICO — irmão da linha acima, com
+    // o MESMO molde: booleano com default LIGADO (#2097, #2156). O default é
+    // `true` porque quem não mexer tem de ficar com o resultado de hoje; o
+    // efeito da chave (trocar a descrição da ferramenta) mora no turno.
+    handoff_legal_enabled: z.boolean().default(true),
+    proposal_ai_draft_enabled: z.boolean().default(true),
     cases_enabled: z.boolean().default(false),
     // Onda 4 — quebra a resposta em bolhas curtas (splitIntoBubbles) espaçadas
     // pelo pacing anti-ban. Defaults espelham a migration 0059.
     split_messages: z.boolean().default(false),
     split_max_chars: z.number().int().min(80).max(4000).default(600),
+    /**
+     * Janela de coalescência de rajada inbound para ESTE agente (ms).
+     *
+     * `null`/ausente = usa o `INBOUND_DEBOUNCE_MS` da instalação (comportamento
+     * de sempre — regressão zero). 0 desliga a coalescência de rajada para o
+     * agente (job imediato). 1..60000 define a janela, com TETO de 60s para
+     * ninguém travar o atendimento sem querer (#1856).
+     */
+    inbound_debounce_ms: z.number().int().min(0).max(60000).nullable().optional(),
     followup: followupConfigSchema,
     // ── Papel OPERADOR (spec 16 §3.2) ───────────────────────────────────────
     // Todos com `.default(...)`, e é o que mantém retrocompatível: agent e
@@ -187,11 +215,17 @@ const versionShapeSchema = z
     // uma régua que já não existe. O porquê do 25 está em
     // `lib/mcp/tools/selecao-por-pacote.ts`, junto da constante.
     operator_tool_ids: z
-      .array(z.string().min(1).max(80))
+      .array(z.string().min(1).max(120))
       .max(TETO_TOOLS_POR_AGENTE)
       .default([])
+      // Catálogo compilado OU ferramenta remota escolhida pelo agente (item 6,
+      // `mcp_externo:<leitura|escrita>:<nome>`): recusar a remota aqui faria a
+      // tela salvar e a publicação devolver `tool_id_invalid`.
       .refine(
-        (ids) => ids.every((id) => (VALID_TOOL_IDS as readonly string[]).includes(id)),
+        (ids) =>
+          ids.every((id) =>
+            ehToolIdRemoto(id) || (VALID_TOOL_IDS as readonly string[]).includes(id),
+          ),
         { message: "tool_id_invalid" },
       ),
     /**
@@ -232,6 +266,8 @@ export const versionPatchSchema = versionShapeSchema
     history_token_window: versionShapeSchema.shape.history_token_window.removeDefault(),
     handoff_keywords: versionShapeSchema.shape.handoff_keywords.removeDefault(),
     handoff_tool_enabled: versionShapeSchema.shape.handoff_tool_enabled.removeDefault(),
+    handoff_legal_enabled: versionShapeSchema.shape.handoff_legal_enabled.removeDefault(),
+    proposal_ai_draft_enabled: versionShapeSchema.shape.proposal_ai_draft_enabled.removeDefault(),
     cases_enabled: versionShapeSchema.shape.cases_enabled.removeDefault(),
     split_messages: versionShapeSchema.shape.split_messages.removeDefault(),
     split_max_chars: versionShapeSchema.shape.split_max_chars.removeDefault(),

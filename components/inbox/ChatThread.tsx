@@ -26,6 +26,7 @@ import type { Message, Note } from "@/lib/types/messaging";
 
 interface Props {
   conversationId: string | null;
+  searchTerm?: string;
   provider?: string | null;
   /** Escolher uma mensagem para responder. Sobe até o composer. */
   onResponder?: (m: Message) => void;
@@ -80,7 +81,14 @@ function dayLabel(d: Date, t: (texto: string) => string = (texto) => texto, loca
   return format(d, "dd/MM/yyyy", { locale: locale });
 }
 
-export function ChatThread({ conversationId, provider, onResponder, dono, contatoId }: Props) {
+export function ChatThread({
+  conversationId,
+  provider,
+  onResponder,
+  dono,
+  contatoId,
+  searchTerm = "",
+}: Props) {
   const localeDaData = useLocaleDeData();
   const t = useT();
   const q = useMessagesRealtime(conversationId);
@@ -112,6 +120,36 @@ export function ChatThread({ conversationId, provider, onResponder, dono, contat
     [q.data],
   );
 
+  /**
+   * BUSCA NO QUE JÁ ESTÁ NA TELA (#1793). Não vai ao servidor: filtra as
+   * páginas carregadas, e o rótulo diz isso para ninguém ler "zero" como "não
+   * existe na conversa". Apagada e oculta ficam de fora — o texto delas não
+   * aparece na bolha, e marcar uma bolha sem o termo visível seria mentir.
+   */
+  const termo = searchTerm.trim().toLocaleLowerCase();
+  const resultados = useMemo(
+    () =>
+      new Set(
+        messages
+          .filter(
+            (m) =>
+              termo &&
+              !m.revoked_at &&
+              !m.metadata?.crm_hidden_at &&
+              m.body?.toLocaleLowerCase().includes(termo),
+          )
+          .map((m) => m.id),
+      ),
+    [messages, termo],
+  );
+  // Só o TERMO leva à ocorrência. Depender do conjunto de resultados faria cada
+  // mensagem nova do tempo real arrancar quem lê de volta à primeira ocorrência.
+  useEffect(() => {
+    if (termo)
+      scrollerRef.current
+        ?.querySelector('[data-search-match="true"]')
+        ?.scrollIntoView({ block: "nearest" });
+  }, [termo]);
   /**
    * As mensagens por id, para resolver a CITADA sem ir ao servidor.
    *
@@ -193,9 +231,22 @@ export function ChatThread({ conversationId, provider, onResponder, dono, contat
       const sc = scrollerRef.current;
       if (sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight > 120) return;
     }
-    // Fio ainda vazio não ancora nada: marcar aqui faria a guarda valer a partir
-    // da pintura em branco, que é exatamente o defeito acima.
-    if (items.length > 0) jaAncorou.current = true;
+    /**
+     * O CARTÃO PODE CHEGAR COM O ESQUELETO AINDA NA TELA (#2515).
+     *
+     * As passagens vêm de `usePassagensDaConversa`, uma consulta própria, e
+     * podem resolver ANTES da de mensagens. Aí `items.length` já é 1 enquanto
+     * `q.isLoading` ainda é verdadeiro — e o ramo do esqueleto NÃO monta
+     * `scrollerRef` nem `bottomRef`. Marcar `jaAncorou` nesse instante consumia
+     * a abertura sobre um `scrollIntoView` que roda em cima de um ref nulo:
+     * nada rolava, mas quando as mensagens chegassem a guarda de distância via
+     * 308px até o fim e devolvia sem rolar, deixando "Assumir e responder"
+     * abaixo da dobra (medido na run 37660047994: `base=1028`, `janela=720`).
+     *
+     * Por isso a marca só vale com o destino montado: enquanto o fio de
+     * verdade não existe, a abertura continua pendente.
+     */
+    if (items.length > 0 && bottomRef.current) jaAncorou.current = true;
 
     bottomRef.current?.scrollIntoView({
       behavior: primeiraAncoragem ? "auto" : "smooth",
@@ -287,6 +338,11 @@ export function ChatThread({ conversationId, provider, onResponder, dono, contat
 
   return (
     <div {...sinalDoCanal} className="flex h-full min-w-0 flex-col">
+      {termo && (
+        <div className="px-4 py-1 text-xs text-muted-foreground" role="status">
+          {t("Resultados nas mensagens carregadas")}: {resultados.size}
+        </div>
+      )}
       <div ref={scrollerRef} className="min-w-0 flex-1 overflow-y-auto py-2">
         {q.hasNextPage && (
           <div className="flex justify-center py-2">
@@ -342,6 +398,7 @@ export function ChatThread({ conversationId, provider, onResponder, dono, contat
                 <MessageBubble
                   key={`msg-${item.data.id}`}
                   message={item.data}
+                  searchMatch={resultados.has(item.data.id)}
                   debugCitations={debugCitations}
                   onResponder={onResponder}
                   // A citada sai da MESMA lista já carregada: buscar no servidor

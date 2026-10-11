@@ -14,7 +14,12 @@ import { platformBrandingSchema } from "@/lib/schemas/settings";
  * revenda) ficava inutilizável. Medido no navegador em 03/10/2026.
  */
 
-const BASE = { app_name: "Revenda Teste CRM", accent_hex: "#7a5cd6", show_powered_by: true };
+const BASE = {
+  app_name: "Revenda Teste CRM",
+  accent_hex: "#7a5cd6",
+  accent_dark_hex: null,
+  show_powered_by: true,
+};
 
 describe("platformBrandingSchema.logo_url", () => {
   it("devolve o logo padrão semeado (caminho do próprio servidor) sem recusar", () => {

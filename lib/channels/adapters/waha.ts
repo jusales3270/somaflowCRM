@@ -16,6 +16,7 @@ import {
 } from "@/lib/waha/resolve-contact-whatsapp-id";
 import {
   bareWaMessageId,
+  canonicalWahaExternalId,
   chatIdFromWaMessageId,
   parseWahaMessageId,
   wahaEchoExternalIds,
@@ -54,10 +55,17 @@ function enderecoDaMensagem(input: { recipient: string | null; externalId: strin
   if (!client) throw new Error("waha_not_configured");
   const chatId = chatIdFromWaMessageId(input.externalId) ?? input.recipient;
   if (!chatId) throw new Error("recipient_unavailable");
-  const messageId = input.externalId.includes("_")
-    ? input.externalId
-    : `true_${chatId}_${bareWaMessageId(input.externalId)}`;
-  return { client, chatId, messageId };
+  return { client, chatId, messageId: idCompletoDaMensagem(input.externalId, chatId) };
+}
+
+/**
+ * O id que a API do WAHA pede (editar, apagar, citar) é o COMPLETO. Só o que é
+ * nosso fica gravado bare — o envio e, desde o #1855, o eco do que o dono digitou
+ * no celular —, e o que é nosso é sempre `fromMe`, daí o `true_`. O inbound
+ * chega composto e passa intacto.
+ */
+function idCompletoDaMensagem(externalId: string, chatId: string): string {
+  return externalId.includes("_") ? externalId : `true_${chatId}_${bareWaMessageId(externalId)}`;
 }
 
 export const wahaAdapter: ChannelAdapter = {
@@ -75,6 +83,20 @@ export const wahaAdapter: ChannelAdapter = {
    */
   echoExternalIds(input: { externalId: string; recipient: string }): string[] {
     return wahaEchoExternalIds(input.externalId, input.recipient);
+  },
+
+  /**
+   * A forma canônica de `messages.external_id`: a CAUDA do id (`3EB0…`) em
+   * conversa individual, o id INTACTO em grupo — a que o eco grava em cada um
+   * (regra e porquê em `canonicalWahaExternalId`). O envio devolve a cauda no
+   * NOWEB e o `_serialized` completo no WEBJS — gravar o que veio faria os DOIS
+   * lados escreverem strings diferentes do mesmo id, o `unique (organization_id,
+   * external_id)` nunca disparasse e o eco que chegasse perto do carimbo virasse
+   * a segunda linha (#196). Reduzir aqui (não no handler) mantém a regra do id
+   * dentro da fronteira de canal.
+   */
+  canonicalExternalId(externalId: string): string {
+    return canonicalWahaExternalId(externalId);
   },
 
   // Mesmo pre-check que o handler já fazia com `getWahaClient() !== null`,
@@ -209,6 +231,18 @@ export const wahaAdapter: ChannelAdapter = {
     }
   },
 
+  async listGroups(input: { sessionRef: string }) {
+    const client = getWahaClient();
+    if (!client) throw new Error("waha_not_configured");
+    return client.listarGrupos(input.sessionRef);
+  },
+
+  async setGroupIntake(input: { sessionRef: string; receive: boolean }) {
+    const client = getWahaClient();
+    if (!client) return false;
+    return client.definirRecebimentoDeGrupos(input.sessionRef, input.receive);
+  },
+
   /**
    * Baixa o anexo que o cliente mandou.
    *
@@ -271,7 +305,7 @@ export const wahaAdapter: ChannelAdapter = {
         envelope.body ?? "",
         // A citação é enfeite da conversa, nunca condição de envio: quando não
         // há, o envio segue igual. Ver `OutboundEnvelope.replyToExternalId`.
-        envelope.replyToExternalId,
+        envelope.replyToExternalId ? idCompletoDaMensagem(envelope.replyToExternalId, to) : null,
       );
     }
 

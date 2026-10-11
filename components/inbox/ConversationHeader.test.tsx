@@ -37,6 +37,13 @@ vi.mock("@/hooks/inbox/useResumeAiAttendance", () => ({
 vi.mock("@/hooks/inbox/usePauseAiAttendance", () => ({
   usePauseAiAttendance: () => ({ mutate: vi.fn(), isPending: false }),
 }));
+// Spec 21, etapa 15: o cabeçalho chama os hooks de pessoal em toda
+// renderização (antes dos early returns) — sem este mock, o `useMutation` real
+// exigiria QueryClientProvider e o teste inteiro caía.
+vi.mock("@/hooks/contacts/usePersonalContact", () => ({
+  useMarkPersonalContact: () => ({ mutate: vi.fn(), isPending: false }),
+  useUnmarkPersonalContact: () => ({ mutate: vi.fn(), isPending: false }),
+}));
 vi.mock("@/hooks/ai/useAutomaticoAtivo", () => ({
   useAutomaticoAtivo: () => ({ data: false }),
 }));
@@ -98,6 +105,7 @@ describe("ConversationHeader — chamada de voz na Inbox", () => {
       phone_number: "+5511999999999",
       tags: [],
       is_blocked: false,
+      is_personal: false,
       is_anonymized: false,
     };
     render(<ConversationHeader conversation={atual} />);
@@ -116,6 +124,7 @@ describe("ConversationHeader — chamada de voz na Inbox", () => {
       phone_number: "+5511999999999",
       tags: [],
       is_blocked: false,
+      is_personal: false,
       is_anonymized: false,
     };
     render(<ConversationHeader conversation={atual} />);
@@ -185,5 +194,24 @@ describe("ConversationHeader — Fechar e Arquivar por AlertDialog", () => {
         "Arquivar encerra este atendimento e guarda a conversa no histórico. Se o cliente escrever de novo, ela volta.",
       ),
     ).toBeNull();
+  });
+});
+
+describe("ConversationHeader — busca dentro da conversa (#1793)", () => {
+  it("o botão só existe com quem o atenda, e só abre a busca — nenhuma ação de atendimento", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<ConversationHeader conversation={conversa("open")} />);
+    expect(screen.queryByRole("button", { name: "Buscar nesta conversa" })).toBeNull();
+
+    const buscar = vi.fn();
+    rerender(
+      <ConversationHeader conversation={conversa("open")} onBuscar={buscar} buscaAberta={false} />,
+    );
+    const botao = screen.getByRole("button", { name: "Buscar nesta conversa" });
+    expect(botao).toHaveAttribute("aria-expanded", "false");
+    await user.click(botao);
+    expect(buscar).toHaveBeenCalledOnce();
+    expect(closeMutate).not.toHaveBeenCalled();
+    expect(arquivarMutate).not.toHaveBeenCalled();
   });
 });
