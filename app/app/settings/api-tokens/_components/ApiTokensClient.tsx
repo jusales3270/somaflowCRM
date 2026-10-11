@@ -32,6 +32,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useT } from "@/hooks/i18n/useT";
+import {
+  comandoDoClaudeMcpAdd,
+  comandosDoCodex,
+  ESCOPOS_DO_ASSISTENTE,
+  VALIDADE_DO_TOKEN_DO_ASSISTENTE_DIAS,
+} from "@/lib/mcp/conectar-assistente";
 
 /**
  * `mcp:read`/`mcp:write` faltavam nesta lista, e sem eles NENHUMA ferramenta
@@ -60,7 +66,12 @@ const SCOPES: { id: string; label: string }[] = [
   { id: "audit:read", label: "Ler o log de auditoria" },
 ];
 
-export function ApiTokensClient() {
+interface Props {
+  /** Presente só para quem administra a instalação (ver a page). */
+  conectarAssistente?: { urlDaInstalacao: string } | null;
+}
+
+export function ApiTokensClient({ conectarAssistente = null }: Props = {}) {
   const tagDoIdioma = useTagDeIdioma();
   const t = useT();
   const { data, isLoading } = useApiTokens();
@@ -72,6 +83,22 @@ export function ApiTokensClient() {
   const [scopes, setScopes] = useState<string[]>([]);
   const [expiresInDays, setExpiresInDays] = useState<string>("");
   const [created, setCreated] = useState<CreatedApiToken | null>(null);
+  // O token recém-criado É o do assistente: só então o diálogo mostra os comandos prontos.
+  const [doAssistente, setDoAssistente] = useState(false);
+
+  const criarTokenDoAssistente = async () => {
+    try {
+      const res = await create.mutateAsync({
+        name: t("Assistente de IA (administração)"),
+        scopes: [...ESCOPOS_DO_ASSISTENTE],
+        expires_in_days: VALIDADE_DO_TOKEN_DO_ASSISTENTE_DIAS,
+      });
+      setDoAssistente(true);
+      setCreated(res.data);
+    } catch {
+      /* noop — o hook já mostra o erro */
+    }
+  };
 
   const tokens = data?.data ?? [];
 
@@ -87,6 +114,7 @@ export function ApiTokensClient() {
         scopes,
         expires_in_days: expiresInDays ? Number(expiresInDays) : undefined,
       });
+      setDoAssistente(false);
       setCreated(res.data);
       setName("");
       setScopes([]);
@@ -103,6 +131,28 @@ export function ApiTokensClient() {
 
   return (
     <>
+      {conectarAssistente ? (
+        <section
+          data-testid="conectar-assistente"
+          className="space-y-2 rounded-md border border-border p-4"
+        >
+          <h2 className="text-sm font-semibold">{t("Conectar seu assistente de IA")}</h2>
+          <p className="text-sm text-muted-foreground">
+            {t(
+              "Use o Claude Code (assinatura do Claude) ou o Codex (assinatura do ChatGPT) para consultar e operar o CRM pelo terminal. O assistente roda na sua máquina e chama o CRM com um token de administrador; a sua assinatura nunca fica guardada aqui. Os agentes que atendem clientes continuam usando chave de API.",
+            )}
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={create.isPending}
+            onClick={() => void criarTokenDoAssistente()}
+          >
+            {t("Criar token para o assistente")}
+          </Button>
+        </section>
+      ) : null}
+
       <div className="flex sm:justify-end">
         <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto">
           {t("Criar token")}
@@ -150,7 +200,9 @@ export function ApiTokensClient() {
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {tok.expires_at ? new Date(tok.expires_at).toLocaleDateString(tagDoIdioma) : "—"}
+                    {tok.expires_at
+                      ? new Date(tok.expires_at).toLocaleDateString(tagDoIdioma)
+                      : "—"}
                   </TableCell>
                   <TableCell>
                     {!tok.revoked_at ? (
@@ -178,9 +230,7 @@ export function ApiTokensClient() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("Criar novo token")}</DialogTitle>
-            <DialogDescription>
-              {t("O plaintext será mostrado apenas uma vez.")}
-            </DialogDescription>
+            <DialogDescription>{t("O plaintext será mostrado apenas uma vez.")}</DialogDescription>
           </DialogHeader>
           <form onSubmit={onCreate} className="space-y-4">
             <div className="space-y-2">
@@ -239,7 +289,15 @@ export function ApiTokensClient() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!created} onOpenChange={(o) => !o && setCreated(null)}>
+      <Dialog
+        open={!!created}
+        onOpenChange={(o) => {
+          if (!o) {
+            setCreated(null);
+            setDoAssistente(false);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("Token criado")}</DialogTitle>
@@ -249,7 +307,7 @@ export function ApiTokensClient() {
           </DialogHeader>
           {created ? (
             <div className="space-y-3">
-              <code className="block break-all rounded-md border bg-muted p-3 text-sm">
+              <code className="block rounded-md border bg-muted p-3 text-sm break-all">
                 {created.plaintext}
               </code>
               <Button
@@ -265,13 +323,115 @@ export function ApiTokensClient() {
                 {t("Copiar para clipboard")}
               </Button>
               <p className="text-xs text-muted-foreground">{created._warning}</p>
+              {doAssistente && conectarAssistente ? (
+                <ComandosDoAssistente
+                  claude={comandoDoClaudeMcpAdd({
+                    urlDaInstalacao: conectarAssistente.urlDaInstalacao,
+                    token: created.plaintext,
+                  })}
+                  codex={comandosDoCodex({
+                    urlDaInstalacao: conectarAssistente.urlDaInstalacao,
+                    token: created.plaintext,
+                  })}
+                />
+              ) : null}
             </div>
           ) : null}
           <DialogFooter>
-            <Button onClick={() => setCreated(null)}>{t("Fechar")}</Button>
+            <Button
+              onClick={() => {
+                setCreated(null);
+                setDoAssistente(false);
+              }}
+            >
+              {t("Fechar")}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/** Um comando com o botão de copiar. */
+function BlocoDeComando({ comando, testId }: { comando: string; testId: string }) {
+  const t = useT();
+  return (
+    <div className="space-y-2">
+      <code
+        data-testid={testId}
+        className="block rounded-md border bg-muted p-3 font-mono text-xs break-all"
+      >
+        {comando}
+      </code>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={() => {
+          void copyToClipboard(comando).then((ok) => {
+            if (ok) toast.success(t("Comando copiado."));
+            else toast.error(t("Não foi possível copiar — selecione o comando acima."));
+          });
+        }}
+      >
+        {t("Copiar comando")}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Os comandos prontos, para quem administra escolher o assistente. Montados pela mesma
+ * regra do `pnpm conectar-claude` / `pnpm conectar-codex` (`lib/mcp/conectar-assistente.ts`).
+ */
+function ComandosDoAssistente({ claude, codex }: { claude: string; codex: string[] }) {
+  const t = useT();
+  const [cliente, setCliente] = useState<"claude" | "codex">("claude");
+  return (
+    <div data-testid="comandos-do-assistente" className="space-y-3 border-t pt-3">
+      <p className="text-sm font-medium">
+        {t("Escolha o assistente e cole no terminal da sua máquina:")}
+      </p>
+      <div role="tablist" className="flex gap-2">
+        {(
+          [
+            ["claude", "Claude Code"],
+            ["codex", "Codex"],
+          ] as const
+        ).map(([id, rotulo]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={cliente === id}
+            onClick={() => setCliente(id)}
+            className={`rounded-md border px-3 py-1 text-xs ${
+              cliente === id ? "border-primary bg-primary/10" : "border-border"
+            }`}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+      {cliente === "claude" ? (
+        <BlocoDeComando comando={claude} testId="comando-claude-code" />
+      ) : (
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "O Codex lê o token de uma variável de ambiente. Cole os dois comandos, nesta ordem:",
+            )}
+          </p>
+          <BlocoDeComando comando={codex[0] ?? ""} testId="comando-codex-token" />
+          <BlocoDeComando comando={codex[1] ?? ""} testId="comando-codex" />
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {t(
+          'Depois, abra o assistente e peça, por exemplo: "quais negócios esfriaram esta semana?". O token vale 90 dias e pode ser revogado nesta tela.',
+        )}
+      </p>
+    </div>
   );
 }

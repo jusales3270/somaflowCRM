@@ -1,4 +1,4 @@
-<!-- traduzido-de: docs/white-label.md@909aa4197001 -->
+<!-- traduzido-de: docs/white-label.md@bbab6996e83a -->
 
 [🇧🇷 Português](white-label.md) · 🇺🇸 English · [🇪🇸 Español](white-label.es.md)
 
@@ -184,6 +184,8 @@ Every installation ships the scripts in `hostgator-setup-kit/`:
 | `bash reset-password.sh` | Resets a user's password |
 | `bash reset-mfa.sh` | Removes two-step verification from whoever lost the device |
 | `bash healthcheck.sh` | Diagnoses the installation |
+
+**Operating the CRM from your AI assistant.** Whoever administers the installation can connect Claude Code (Claude subscription) or Codex (ChatGPT subscription) to the CRM, under Settings › API Tokens › Connect your AI assistant. The subscription never goes into the CRM, and your clients' agents keep using an API key. Step by step in [`conectar-assistente-de-ia.md`](conectar-assistente-de-ia.md) (Portuguese).
 
 `reset-mfa.sh` is the one you will use the most: two-step verification is mandatory for administrators, and changing phones without saving the recovery codes is the most common support call.
 

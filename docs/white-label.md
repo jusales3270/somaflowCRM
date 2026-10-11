@@ -183,6 +183,8 @@ Cada instalação traz os scripts em `hostgator-setup-kit/`:
 | `bash reset-mfa.sh` | Remove a verificação em duas etapas de quem perdeu o aparelho |
 | `bash healthcheck.sh` | Diagnóstico da instalação |
 
+**Operar o CRM pelo seu assistente de IA.** Quem administra a instalação pode conectar o Claude Code (assinatura do Claude) ou o Codex (assinatura do ChatGPT) ao CRM, em Configurações › API Tokens › Conectar seu assistente de IA. A assinatura nunca entra no CRM, e os agentes dos seus clientes continuam na chave de API. Passo a passo em [`conectar-assistente-de-ia.md`](conectar-assistente-de-ia.md).
+
 O `reset-mfa.sh` é o que você mais vai usar: a verificação em duas etapas é obrigatória para administradores, e trocar de celular sem salvar os códigos de recuperação é a chamada de suporte mais comum.
 
 ---

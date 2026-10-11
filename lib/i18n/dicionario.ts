@@ -12175,6 +12175,17 @@ export const DICIONARIO: Traducoes = {
     es: "El ritmo se ajusta en la propia pantalla de la campaña, sin descartar nada.",
   },
   "Voltar para a campanha": { es: "Volver a la campaña" },
+  // Configurações › API Tokens › Conectar seu assistente de IA (Claude Code ou Codex).
+  "Assistente de IA (administração)": { es: "Asistente de IA (administración)" },
+  "Conectar seu assistente de IA": { es: "Conecta tu asistente de IA" },
+  "Use o Claude Code (assinatura do Claude) ou o Codex (assinatura do ChatGPT) para consultar e operar o CRM pelo terminal. O assistente roda na sua máquina e chama o CRM com um token de administrador; a sua assinatura nunca fica guardada aqui. Os agentes que atendem clientes continuam usando chave de API.": { es: "Usa Claude Code (suscripción de Claude) o Codex (suscripción de ChatGPT) para consultar y operar el CRM desde la terminal. El asistente se ejecuta en tu equipo y llama al CRM con un token de administrador; tu suscripción nunca se guarda aquí. Los agentes que atienden a los clientes siguen usando clave de API." },
+  "Criar token para o assistente": { es: "Crear token para el asistente" },
+  "Escolha o assistente e cole no terminal da sua máquina:": { es: "Elige el asistente y pega en la terminal de tu equipo:" },
+  "O Codex lê o token de uma variável de ambiente. Cole os dois comandos, nesta ordem:": { es: "Codex lee el token de una variable de entorno. Pega los dos comandos, en este orden:" },
+  "Depois, abra o assistente e peça, por exemplo: \"quais negócios esfriaram esta semana?\". O token vale 90 dias e pode ser revogado nesta tela.": { es: "Después, abre el asistente y pide, por ejemplo: \"¿qué negocios se enfriaron esta semana?\". El token vale 90 días y puede revocarse en esta pantalla." },
+  "Comando copiado.": { es: "Comando copiado." },
+  "Não foi possível copiar — selecione o comando acima.": { es: "No se pudo copiar: selecciona el comando de arriba." },
+  "Copiar comando": { es: "Copiar comando" },
   // Tela de entrada do SomaFlow (components/auth/PublicAuthShell.tsx).
   "Clique para entrar no CRM": { es: "Haz clic para entrar al CRM" },
   "Clique para entrar": { es: "Haz clic para entrar" },
