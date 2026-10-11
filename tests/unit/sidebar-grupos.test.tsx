@@ -89,7 +89,9 @@ describe("Sidebar agrupado", () => {
   });
 
   it("o número de Casos mora no item de Casos, e o da Fila no item de Inbox", () => {
-    comoPapel("admin");
+    // SomaFlow: Casos fica no menu de quem atende; gerente e admin têm
+    // "Uso e orçamento" nessa vaga (ver o caso abaixo).
+    comoPapel("agent");
     render(<Sidebar collapsed={false} />);
     const casos = screen.getAllByTestId("marcador-casos");
     const fila = screen.getAllByTestId("marcador-fila");
@@ -103,6 +105,14 @@ describe("Sidebar agrupado", () => {
     // Recolhido, o contador vira ponto — é o componente que decide, com esta dica.
     render(<Sidebar collapsed />);
     expect(screen.getByTestId("marcador-casos")).toHaveAttribute("data-compacto", "true");
+  });
+
+  it("gerente e admin têm Uso e orçamento na vaga de Casos — e o resto do menu não muda", () => {
+    comoPapel("admin");
+    render(<Sidebar collapsed={false} />);
+    expect(screen.getByRole("link", { name: "Uso e orçamento" })).toHaveAttribute("href", "/app/ai/usage");
+    expect(screen.queryByRole("link", { name: /^Casos/ })).toBeNull();
+    expect(screen.getByRole("link", { name: "Ver tudo em IA" })).toHaveAttribute("href", "/app/ai");
   });
 
   it("e os dois itens de funil não disputam o mesmo nome", () => {

@@ -15427,6 +15427,13 @@ export const DICIONARIO: Traducoes = {
   "Cotação mais recente": { es: "Cotización más reciente" },
   "por dólar": { es: "por dólar" },
   "Banco Central do Brasil": { es: "Banco Central de Brasil" },
+  // SomaFlow — página inicial pública (cartões do que o produto faz).
+  "Conversas no WhatsApp": { es: "Conversaciones en WhatsApp" },
+  "As conversas da equipe num só lugar, com fila, responsável e o histórico de cada cliente.": { es: "Las conversaciones del equipo en un solo lugar, con cola, responsable y el historial de cada cliente." },
+  "Funil e agenda": { es: "Embudo y agenda" },
+  "O funil de vendas e a agenda de atendimentos andando junto com as conversas.": { es: "El embudo de ventas y la agenda de citas avanzando junto con las conversaciones." },
+  "Agentes de inteligência artificial": { es: "Agentes de inteligencia artificial" },
+  "Respondem, qualificam o interesse e passam a conversa para uma pessoa quando é preciso.": { es: "Responden, califican el interés y pasan la conversación a una persona cuando hace falta." },
 };
 
 /**

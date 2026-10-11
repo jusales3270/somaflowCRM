@@ -21,6 +21,10 @@
  * Que o menu inteiro continua cabendo em 900px com "Casos" no lugar de
  * "Roteadores" é o `navegacao.spec.ts` que mede.
  *
+ * SomaFlow: "Casos" fica no menu de quem ATENDE (`sidebarAtePapel: "agent"`);
+ * gerente e admin têm "Uso e orçamento" nessa vaga. Por isso o caso do contador
+ * de Casos entra como o atendente do seed, e não como o admin.
+ *
  * Semeia o PRÓPRIO estado pelo service role (canal, contato, conversa escalada
  * e caso) e apaga tudo no fim: a organização de teste é compartilhada, e uma
  * spec que dependesse do caso da `seed-e2e-escalacao` passaria ou falharia
@@ -207,6 +211,18 @@ async function medirSelo(page: Page, href: string, testId: string, vizinho: stri
   );
 }
 
+/** O atendente do seed: sem MFA, pelo formulário (como as specs da agenda entram como gerente). */
+async function loginComoAtendente(page: Page): Promise<void> {
+  const creds = lerCreds();
+  const usuario = creds.users.agent;
+  if (!usuario) throw new Error(".e2e-creds.json sem o usuário `agent` — rode seed-e2e-credentials.ts");
+  await page.goto("/login");
+  await page.locator("#email").fill(usuario.email);
+  await page.locator("#password").fill(creds.password);
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
+  await page.waitForURL(/\/app(\/|$)/, { timeout: ESPERA });
+}
+
 test.describe("contadores do menu", () => {
   test.describe.configure({ mode: "serial", timeout: 240_000 });
 
@@ -223,7 +239,7 @@ test.describe("contadores do menu", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await loginComoAdmin(page, lerCreds());
+    await loginComoAtendente(page);
 
     // Antes do caso: o número (se houver) é o da lista.
     await abrirCasos(page, false);

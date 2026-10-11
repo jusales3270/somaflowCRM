@@ -159,11 +159,30 @@ describe("sidebarGroups", () => {
     const ia = sidebarGroups(true, null).find((g) => g.group.id === "ia");
     // Casos entrou no lugar de Roteadores, um por um: roteador se configura
     // poucas vezes; caso pede resposta no mesmo dia.
+    //
+    // SomaFlow: a terceira vaga é dividida por papel (`sidebarAtePapel`). Gerente
+    // e admin veem "Uso e orçamento" — custo da IA e das ligações —; quem atende
+    // continua vendo Casos. O total de itens não muda para papel nenhum.
     expect(ia?.items.map((i) => i.href)).toEqual([
       "/app/ai/agents",
       "/app/ai/followups",
-      "/app/ai/cases",
+      "/app/ai/usage",
     ]);
+    const daGerencia = sidebarGroups(false, "manager").find((g) => g.group.id === "ia");
+    expect(daGerencia?.items.map((i) => i.href)).toEqual([
+      "/app/ai/agents",
+      "/app/ai/followups",
+      "/app/ai/usage",
+    ]);
+    const deQuemAtende = sidebarGroups(false, "agent").find((g) => g.group.id === "ia");
+    expect(deQuemAtende?.items.map((i) => i.href)).toContain("/app/ai/cases");
+    expect(deQuemAtende?.items.map((i) => i.href)).not.toContain("/app/ai/usage");
+  });
+
+  it("a vaga dividida não some do hub: Casos segue em \"Ver tudo em IA\" para a gerência", () => {
+    expect(
+      hubSections("ia", false, "manager").flatMap((s) => s.items.map((i) => i.href)),
+    ).toContain("/app/ai/cases");
   });
 });
 
