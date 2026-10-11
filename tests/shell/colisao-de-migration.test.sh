@@ -72,6 +72,11 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 #   2. a descoberta de repositório nunca sobe para fora de "$TMP";
 #   3. identidade por ambiente, não por `git config` (NENHUM teste aqui mede o autor).
 unset $(git rev-parse --local-env-vars)
+# O gate descobre o PR "dele" pelo `GITHUB_REF` do CI (refs/pull/N/merge) e o
+# tira da conta. Herdado do job, ele vaza para os cenários: no PR real #7 o PR
+# FALSO #7 dos casos 16-18 virava "o seu" e sumia da medição. Os cenários dizem
+# o próprio número pelo que montam, nunca pelo ambiente de quem os roda.
+unset GITHUB_REF
 export GIT_CEILING_DIRECTORIES="$TMP"
 export GIT_AUTHOR_NAME="Teste" GIT_AUTHOR_EMAIL="teste@exemplo.invalid"
 export GIT_COMMITTER_NAME="Teste" GIT_COMMITTER_EMAIL="teste@exemplo.invalid"
