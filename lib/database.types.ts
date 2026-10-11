@@ -5036,6 +5036,30 @@ export type Database = {
           },
         ]
       }
+      cotacoes_do_dolar: {
+        Row: {
+          compra: number | null
+          data: string
+          fonte: string
+          obtida_em: string
+          venda: number
+        }
+        Insert: {
+          compra?: number | null
+          data: string
+          fonte?: string
+          obtida_em?: string
+          venda: number
+        }
+        Update: {
+          compra?: number | null
+          data?: string
+          fonte?: string
+          obtida_em?: string
+          venda?: number
+        }
+        Relationships: []
+      }
       crm_lead_activities: {
         Row: {
           actor_agent_id: string | null
@@ -11038,6 +11062,15 @@ export type Database = {
       fn_user_org_ids: { Args: never; Returns: string[] }
       fn_user_role_in: { Args: { p_org: string }; Returns: number }
       fn_user_role_in_org: { Args: { p_org: string }; Returns: string }
+      fn_custo_das_ligacoes: {
+        Args: {
+          p_ate: string
+          p_desde: string
+          p_org: string
+          p_recentes?: number
+        }
+        Returns: Json
+      }
       fn_uso_de_ia: {
         Args: {
           p_agent_id?: string

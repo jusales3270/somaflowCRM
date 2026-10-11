@@ -15,24 +15,23 @@
  * duração da ligação vai em `latency_ms`, que é o "quanto tempo durou" desta
  * chamada (não é latência de resposta).
  *
- * ═══ ⚠️ O QUE NÃO É: O PREÇO ═══
+ * ═══ O PREÇO ═══
  *
- * `cost_cents` sai NULO, e é LIMITAÇÃO DECLARADA, não preço. Token de ÁUDIO é
- * cobrado a uma tarifa própria, muito acima da de texto, e nem `ai_pricing` nem
- * `pricing.ts` têm tarifa de modelo realtime — `computeCost` precificaria o
- * áudio como texto (ou devolveria 0). Inventar a tarifa aqui seria número
- * errado com cara de medido. O que a linha entrega: quantas ligações, quantos
- * tokens (o detalhe áudio/texto vai no log do fim da chamada) e quanto tempo.
- * O gasto em dinheiro da voz segue FORA da régua do teto até existir tarifa
- * de realtime no catálogo.
+ * `cost_cents` sai da tabela de tarifas da Realtime (`./tarifa-realtime.ts`):
+ * seis preços por modelo — texto e áudio, cada um com entrada, cache e saída —,
+ * com fonte e data de conferência escritas lá. `ai_pricing` e `pricing.ts` têm
+ * um preço de entrada e um de saída por modelo, e precificariam o áudio como
+ * texto; por isso a voz tem tabela própria. Com o custo na linha, a ligação
+ * entra na régua do teto (`fn_gasto_de_ia_do_mes`) e no total de Uso de IA.
  *
- * Nulo, e não 0, porque é o nulo que DIZ isso na tela: `getBudgetStatus` conta
- * linha `ok` com `cost_cents` nulo como `gasto_incompleto`, e o card de
- * Orçamento avisa que o gasto medido é menor que o real e que a parada pode não
- * disparar. Um 0 seria o número com cara de medido que este cabeçalho recusa —
- * o card afirmaria medição completa com a ligação inteira fora da conta.
+ * Modelo FORA da tabela continua saindo NULO, e não 0: é o nulo que DIZ isso
+ * na tela — `getBudgetStatus` conta linha `ok` com `cost_cents` nulo como
+ * `gasto_incompleto`, e o card de Orçamento avisa que o gasto medido é menor
+ * que o real. Um 0 seria número com cara de medido.
  */
 import type { ChamadaDeIa } from "@/lib/ai/usage/registrar-chamada";
+
+import { custoDaLigacaoEmCentavos } from "./tarifa-realtime";
 
 /**
  * O `purpose` da sessão de voz em `llm_calls`.
@@ -50,6 +49,9 @@ export interface UsoDaSessao {
   entradaAudio: number;
   entradaTexto: number;
   entradaCache: number;
+  /** A parte de `entradaCache` que era áudio / texto (`cached_tokens_details`). */
+  entradaCacheAudio: number;
+  entradaCacheTexto: number;
   saidaAudio: number;
   saidaTexto: number;
 }
@@ -62,6 +64,8 @@ export function usoVazio(): UsoDaSessao {
     entradaAudio: 0,
     entradaTexto: 0,
     entradaCache: 0,
+    entradaCacheAudio: 0,
+    entradaCacheTexto: 0,
     saidaAudio: 0,
     saidaTexto: 0,
   };
@@ -82,7 +86,12 @@ export function somarUsoDaResposta(acumulado: UsoDaSessao, usage: unknown): UsoD
   const u = usage as {
     input_tokens?: unknown;
     output_tokens?: unknown;
-    input_token_details?: { audio_tokens?: unknown; text_tokens?: unknown; cached_tokens?: unknown };
+    input_token_details?: {
+      audio_tokens?: unknown;
+      text_tokens?: unknown;
+      cached_tokens?: unknown;
+      cached_tokens_details?: { audio_tokens?: unknown; text_tokens?: unknown };
+    };
     output_token_details?: { audio_tokens?: unknown; text_tokens?: unknown };
   };
   return {
@@ -92,6 +101,10 @@ export function somarUsoDaResposta(acumulado: UsoDaSessao, usage: unknown): UsoD
     entradaAudio: acumulado.entradaAudio + n(u.input_token_details?.audio_tokens),
     entradaTexto: acumulado.entradaTexto + n(u.input_token_details?.text_tokens),
     entradaCache: acumulado.entradaCache + n(u.input_token_details?.cached_tokens),
+    entradaCacheAudio:
+      acumulado.entradaCacheAudio + n(u.input_token_details?.cached_tokens_details?.audio_tokens),
+    entradaCacheTexto:
+      acumulado.entradaCacheTexto + n(u.input_token_details?.cached_tokens_details?.text_tokens),
     saidaAudio: acumulado.saidaAudio + n(u.output_token_details?.audio_tokens),
     saidaTexto: acumulado.saidaTexto + n(u.output_token_details?.text_tokens),
   };
@@ -121,8 +134,8 @@ export function linhaDaLigacao(entrada: {
     model: entrada.modelo,
     input_tokens: entrada.uso.entrada,
     output_tokens: entrada.uso.saida,
-    // Ver o cabeçalho: tokens medidos, tarifa de áudio desconhecida → nulo.
-    cost_cents: null,
+    // Ver o cabeçalho e `./tarifa-realtime.ts`: modelo sem tarifa → nulo, nunca 0.
+    cost_cents: custoDaLigacaoEmCentavos(entrada.modelo, entrada.uso),
     latency_ms: entrada.duracaoMs,
     erro: entrada.erro,
   };

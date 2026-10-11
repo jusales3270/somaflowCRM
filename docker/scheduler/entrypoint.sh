@@ -119,6 +119,12 @@ CRONS="
 0 12 * * *|60|api/v1/cron/lgpd-sla-watcher
 30 3 * * *|120|api/v1/cron/kb-conversations-batch
 15 4 * * *|60|api/v1/cron/sync-model-catalog
+# A COTAÇÃO DO DÓLAR (PTAX). O Banco Central publica perto das 13h de Brasília
+# (16h UTC): a batida das 16h40 pega a do dia, e a das 23h10 cobre o dia em que
+# a publicação atrasou. Cada rodada pede os últimos 10 dias, então um dia perdido
+# se preenche sozinho. É ela que converte em reais o custo das ligações.
+40 16 * * *|60|api/v1/cron/cotacao-do-dolar
+10 23 * * *|60|api/v1/cron/cotacao-do-dolar
 40 4 * * *|120|api/v1/cron/data-retention
 0 8 * * *|60|api/v1/cron/proposal-expiry
 30 8 * * *|60|api/v1/cron/proposal-promised-not-created

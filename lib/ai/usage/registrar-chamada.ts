@@ -20,7 +20,8 @@
  * linha nenhuma: a tela de Uso de IA somava zero para ela — gasto que existe e
  * não aparece. A mídia (transcrição e visão) grava pelo próprio caminho, em
  * `workers/media-derive-worker.ts`, porque passa também pelo teto
- * (`aplicarOrcamento`); a voz ainda não tem tarifa no catálogo para entrar nele.
+ * (`aplicarOrcamento`). A voz tem tarifa própria (`workers/voice-agent/tarifa-realtime.ts`):
+ * a linha dela sai com custo e entra na régua do teto pela soma de `llm_calls`.
  *
  * Awaitable, mas NUNCA LANÇA: telemetria que falha não pode derrubar uma
  * ligação em curso. A falha vai para o log.

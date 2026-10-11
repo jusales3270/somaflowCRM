@@ -15409,6 +15409,24 @@ export const DICIONARIO: Traducoes = {
   "Sem contato vinculado, a etiqueta não é aplicada.": {
     es: "Sin contacto vinculado, la etiqueta no se aplica.",
   },
+  // SomaFlow — custo das ligações de voz em reais (Uso de IA).
+  "Ligações de voz": { es: "Llamadas de voz" },
+  "Quanto as ligações atendidas pelo agente de voz custaram nos últimos 30 dias. Cada ligação é convertida em reais pela cotação do dólar (PTAX do Banco Central) do dia em que aconteceu.": { es: "Cuánto costaron las llamadas atendidas por el agente de voz en los últimos 30 días. Cada llamada se convierte a reales con la cotización del dólar (PTAX del Banco Central de Brasil) del día en que ocurrió." },
+  "Custo em reais": { es: "Costo en reales" },
+  "Ligações": { es: "Llamadas" },
+  "min no total": { es: "min en total" },
+  "Média por ligação": { es: "Promedio por llamada" },
+  "Custo por minuto": { es: "Costo por minuto" },
+  "ligação(ões) usaram um modelo de voz sem tarifa conhecida e ficaram fora do total — o gasto real é maior que o mostrado.": { es: "llamada(s) usaron un modelo de voz sin tarifa conocida y quedaron fuera del total — el gasto real es mayor que el mostrado." },
+  "A cotação do dólar ainda não foi obtida do Banco Central. O total em reais aparece depois da próxima busca automática, que roda todo dia às 13h40 de Brasília.": { es: "La cotización del dólar aún no se obtuvo del Banco Central de Brasil. El total en reales aparece después de la próxima consulta automática, que se ejecuta todos los días a las 13:40 de Brasilia." },
+  "Ligações mais recentes": { es: "Llamadas más recientes" },
+  "Dólar": { es: "Dólar" },
+  "Cotação": { es: "Cotización" },
+  "Reais": { es: "Reales" },
+  "não conectou": { es: "no se conectó" },
+  "Cotação mais recente": { es: "Cotización más reciente" },
+  "por dólar": { es: "por dólar" },
+  "Banco Central do Brasil": { es: "Banco Central de Brasil" },
 };
 
 /**

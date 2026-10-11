@@ -59,6 +59,7 @@ const SEM_FILTRO: Record<string, string> = {
   "contact-birthdays": "só emite contact.birthday; o consumidor (automationRulesHandler) é 'pula'",
   "contact-phones": "só consulta o transporte para achar o telefone; nenhuma mensagem ao cliente",
   "contact-proposals-watcher": "só expira propostas de dado vencidas; escrita interna",
+  "cotacao-do-dolar": "cotação do dólar da instalação inteira; não pertence a organização nenhuma",
   "data-retention": "retenção e expurgo: obrigação, nunca bloqueada (spec §1.3)",
   "followup-sem-agente": "só abre aviso na Central sobre fluxo sem agente; sem custo nem saída",
   "handoff-devolucao": "devolve a conversa à IA; a IA só fala por evento, barrado pelo gate e pelo dispatcher",

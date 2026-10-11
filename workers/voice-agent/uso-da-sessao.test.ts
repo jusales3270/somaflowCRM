@@ -21,6 +21,8 @@ describe("uso da sessão de voz", () => {
       entradaAudio: 400,
       entradaTexto: 100,
       entradaCache: 80,
+      entradaCacheAudio: 0,
+      entradaCacheTexto: 0,
       saidaAudio: 120,
       saidaTexto: 40,
     });
@@ -38,7 +40,7 @@ describe("uso da sessão de voz", () => {
     expect(uso.respostas).toBe(1);
   });
 
-  it("a linha da ligação leva tokens medidos, duração e custo NULO (preço desconhecido, não zero)", () => {
+  it("a linha da ligação leva tokens medidos, duração e o custo pela tarifa da Realtime", () => {
     const uso = somarUsoDaResposta(usoVazio(), USO_DE_UMA_RESPOSTA);
     expect(
       linhaDaLigacao({
@@ -59,10 +61,37 @@ describe("uso da sessão de voz", () => {
       model: "gpt-realtime",
       input_tokens: 250,
       output_tokens: 80,
-      cost_cents: null,
+      // 160 áudio novo × $32 + 40 em cache × $0,40 + 50 texto × $4 + 60 áudio de
+      // saída × $64 + 20 texto de saída × $16 = $0,009496 por 1M → 0,9496 centavo.
+      cost_cents: expect.closeTo(0.9496, 10),
       latency_ms: 42_000,
       erro: null,
     });
+  });
+
+  it("soma o detalhe do cache por tipo quando a OpenAI o manda", () => {
+    const uso = somarUsoDaResposta(usoVazio(), {
+      ...USO_DE_UMA_RESPOSTA,
+      input_token_details: {
+        ...USO_DE_UMA_RESPOSTA.input_token_details,
+        cached_tokens_details: { audio_tokens: 30, text_tokens: 10 },
+      },
+    });
+    expect(uso.entradaCacheAudio).toBe(30);
+    expect(uso.entradaCacheTexto).toBe(10);
+  });
+
+  it("modelo sem tarifa conhecida continua com custo NULO — desconhecido, nunca grátis", () => {
+    const linha = linhaDaLigacao({
+      organizationId: "org1",
+      agentId: null,
+      contactId: null,
+      modelo: "gpt-realtime-9-experimental",
+      uso: somarUsoDaResposta(usoVazio(), USO_DE_UMA_RESPOSTA),
+      duracaoMs: 1_000,
+      erro: null,
+    });
+    expect(linha.cost_cents).toBeNull();
   });
 
   it("handshake recusado vira linha de erro", () => {
