@@ -12,8 +12,9 @@
  *
  * ═══ FONTE ═══
  *
- * Tabela "Realtime and audio generation models" de
- * https://developers.openai.com/api/docs/pricing, conferida em 11/10/2026.
+ * Tabela "Realtime and audio generation models" da página oficial de preços da
+ * API da OpenAI, conferida em 11/10/2026 (o endereço está no teste e em
+ * `docs/custo-das-ligacoes.md`).
  * Dólares por MILHÃO de tokens. Quando a OpenAI mudar o preço, muda aqui — e o
  * teste `./tarifa-realtime.test.ts` fixa os números, para a troca ser
  * deliberada e revisada.
@@ -38,11 +39,6 @@ export interface TarifaRealtime {
   audioCache: number;
   audioSaida: number;
 }
-
-export const FONTE_DA_TARIFA_REALTIME = {
-  url: "https://developers.openai.com/api/docs/pricing",
-  conferidaEm: "2026-10-11",
-} as const;
 
 const GPT_REALTIME: TarifaRealtime = {
   textoEntrada: 4,
