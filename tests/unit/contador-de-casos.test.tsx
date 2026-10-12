@@ -27,8 +27,10 @@ describe("contador de casos no menu", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("Casos está no menu da IA com o contador declarado", () => {
-    const ia = sidebarGroups(true, null).find((g) => g.group.id === "ia");
+  it("Casos está no menu da IA de quem atende, com o contador declarado", () => {
+    // SomaFlow: a vaga de Casos no menu vai até `agent` (`sidebarAtePapel`);
+    // gerente e admin a usam para "Uso e orçamento" e chegam aos casos pelo hub.
+    const ia = sidebarGroups(false, "agent").find((g) => g.group.id === "ia");
     expect(ia?.items.find((i) => i.href === "/app/ai/cases")?.contador).toBe("casos");
   });
 });
