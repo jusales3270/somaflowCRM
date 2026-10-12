@@ -46,7 +46,10 @@ describe("/ — a página inicial pública", () => {
       "href",
       "/legal/terms",
     );
-    expect(screen.getByRole("link", { name: "Entrar" })).toHaveAttribute("href", "/login");
+    // Dois "Entrar" — no topo e no destaque da página (SomaFlow) —, os dois para o login.
+    const entrar = screen.getAllByRole("link", { name: "Entrar" });
+    expect(entrar).toHaveLength(2);
+    for (const link of entrar) expect(link).toHaveAttribute("href", "/login");
   });
 
   it("o nome vem da marca resolvida, não de texto fixo", async () => {

@@ -256,7 +256,9 @@ test.describe("contadores do menu", () => {
     expect(comOCaso, "o caso semeado entra na lista como esperando uma pessoa").toBe(antes + 1);
     await expect(seloDeCasos).toHaveText(String(comOCaso), { timeout: ESPERA });
 
-    const m = await medirSelo(page, "/app/ai/cases", "contador-de-casos", "/app/ai/agents");
+    // Vizinho de régua: Inbox, e não Agentes — o atendente (quem tem Casos no
+    // menu, `sidebarAtePapel`) não vê Agentes.
+    const m = await medirSelo(page, "/app/ai/cases", "contador-de-casos", "/app/inbox");
     expect(m.dentro, "o selo precisa morar dentro do item de Casos").toBe(true);
     expect(m.alturaDoItem, "o selo não pode quebrar a linha do item").toBe(m.alturaDoVizinho);
     expect(m.fundo, "o selo precisa ter fundo próprio para ser lido").not.toBe("rgba(0, 0, 0, 0)");
