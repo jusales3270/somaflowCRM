@@ -44,6 +44,13 @@ export interface NavMetadata {
   minRole?: Role;
   /** Ausente = só no hub. `true` = uso diário, sobe para o sidebar. */
   sidebar?: boolean;
+  /**
+   * Sobe ao sidebar só para quem tem ATÉ este papel (platform admin conta como
+   * admin). Para dividir uma vaga do menu, que está no limite medido, entre o
+   * uso diário de quem atende e o de quem gerencia — ver Casos × Uso e orçamento.
+   * Fora do sidebar a tela continua no hub e no ⌘K, para todo papel que a vê.
+   */
+  sidebarAtePapel?: Role;
   healthDot?: boolean;
   /**
    * Contador de pendências ao lado do rótulo. `casos`: casos em que a IA espera
@@ -640,7 +647,11 @@ export const NAV_CATALOG = [
     // Uso diário: a IA abre caso quando precisa de uma pessoa e segue
     // atendendo enquanto espera. Escondido no hub, o caso só era visto por quem
     // fosse procurar — medido numa loja que vende pelo WhatsApp.
+    // SomaFlow: no sidebar só até `agent` — gerente e admin usam a vaga para
+    // "Uso e orçamento" (custo da IA e das ligações, decisão do dono do produto)
+    // e chegam aos casos pelo hub. O menu está no limite: a vaga é dividida.
     sidebar: true,
+    sidebarAtePapel: "agent",
     contador: "casos",
   },
   {
@@ -703,6 +714,10 @@ export const NAV_CATALOG = [
     group: "ia",
     section: "Acompanhar o agente",
     minRole: "manager",
+    // SomaFlow: no sidebar de gerente e admin, na vaga que Casos ocupa para
+    // quem atende (`sidebarAtePapel` em Casos). É onde se vê o custo da IA e,
+    // desde a migration 9001, o custo das ligações em reais.
+    sidebar: true,
   },
 
   // ---- Canais — por onde as mensagens entram e saem ----

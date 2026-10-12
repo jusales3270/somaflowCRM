@@ -15454,6 +15454,13 @@ export const DICIONARIO: Traducoes = {
   "Salvo. A telefonia não está ligada nesta instalação: o tronco entra no ar quando ela for ligada.": { es: "Guardado. La telefonía no está activada en esta instalación: la troncal entra en funcionamiento cuando se active." },
   "Telefonia desligada nesta instalação": { es: "Telefonía desactivada en esta instalación" },
   "Verificar agora": { es: "Verificar ahora" },
+  // SomaFlow — página inicial pública (cartões do que o produto faz).
+  "Conversas no WhatsApp": { es: "Conversaciones en WhatsApp" },
+  "As conversas da equipe num só lugar, com fila, responsável e o histórico de cada cliente.": { es: "Las conversaciones del equipo en un solo lugar, con cola, responsable y el historial de cada cliente." },
+  "Funil e agenda": { es: "Embudo y agenda" },
+  "O funil de vendas e a agenda de atendimentos andando junto com as conversas.": { es: "El embudo de ventas y la agenda de citas avanzando junto con las conversaciones." },
+  "Agentes de inteligência artificial": { es: "Agentes de inteligencia artificial" },
+  "Respondem, qualificam o interesse e passam a conversa para uma pessoa quando é preciso.": { es: "Responden, califican el interés y pasan la conversación a una persona cuando hace falta." },
 };
 
 /**

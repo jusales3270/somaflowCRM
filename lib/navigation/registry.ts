@@ -1,6 +1,6 @@
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 
-import { type Role } from "@/lib/auth/types";
+import { ROLE_RANK, type Role } from "@/lib/auth/types";
 import {
   Bell,
   BookOpen,
@@ -125,12 +125,17 @@ export function sidebarGroups(
   const visible = new Set<string>(
     destinosDaInterface(settings, isPlatformAdmin, role, modulos, capacidades).map((d) => d.href),
   );
+  // Platform admin sem papel no tenant enxerga como admin (é o que `visible` já faz).
+  const rank = isPlatformAdmin ? ROLE_RANK.admin : role ? ROLE_RANK[role] : 0;
+  const cabeNoPapel = (d: NavDestination) =>
+    !d.sidebarAtePapel || rank <= ROLE_RANK[d.sidebarAtePapel];
   return NAV_GROUPS.map((group) => ({
     group,
     items: NAV_DESTINATIONS.filter(
       (d) =>
         d.group === group.id &&
         sobeAoMenuLateral(d, !!settings?.destinos) &&
+        cabeNoPapel(d) &&
         visible.has(d.href),
     ),
   })).filter(
