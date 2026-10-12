@@ -59,6 +59,11 @@ services:
     env_file: .env
     environment:
       SUPABASE_DB_ADMIN_URL: ""
+      # Telefonia (profile `telefonia`): o app origina a ligação de saída e
+      # aplica o tronco SIP da tela no Asterisk, os dois pela ARI. Sem o
+      # profile, o host não existe e a tela mostra "telefonia não ligada".
+      ARI_URL: "http://asterisk:8088"
+      ARI_APP: "voice-agent"
       # O `worker` deste arquivo drena o event_log em poucos segundos (2 s com
       # fila, até 10 s parado); o webhook de mensagem não precisa mais drenar a
       # fila de todas as organizações dentro da requisição
@@ -383,13 +388,27 @@ services:
       # provedor precisa alcançá-las de fora.
       #
       # NUNCA TCP: a ARI (REST + WebSocket, 8088) é o controle total das
-      # chamadas e fica só na rede interna, alcançável apenas pelo
-      # `voice-agent`. Publicá-la entregaria à internet quem liga para quem.
+      # chamadas e fica só na rede interna, alcançável pelo `voice-agent` e
+      # pelo `app` (que origina a ligação e aplica o tronco da tela). Publicá-la
+      # entregaria à internet quem liga para quem. A AMI (5038) idem.
       - "5060:5060/udp"
       # Faixa de RTP casada com asterisk/rtp.conf — mudar uma sem a outra deixa
       # a ligação muda com tudo "conectado" nos logs.
       - "10000-10200:10000-10200/udp"
+    # `iniciar.sh` gera o manager.conf (AMI só de leitura de estado, senha =
+    # ARI_PASSWORD) e chama o entrypoint da imagem. O `command` repete o CMD da
+    # imagem: trocar o entrypoint no compose zera o CMD herdado.
+    entrypoint: ["/bin/sh", "/etc/asterisk/iniciar.sh"]
+    command: ["/usr/sbin/asterisk", "-vvvdddf", "-T", "-W", "-U", "asterisk", "-p"]
+    environment:
+      ARI_PASSWORD: ${ARI_PASSWORD:-}
     volumes:
+      - ./asterisk/iniciar.sh:/etc/asterisk/iniciar.sh:ro
+      # modules.conf: sem ele o res_pjsip_nat não carrega (limite de módulos do
+      # pjproject). sorcery.conf: o tronco de cada organização vem do astdb,
+      # gravado pela tela via ARI — ver os cabeçalhos dos dois arquivos.
+      - ./asterisk/modules.conf:/etc/asterisk/modules.conf:ro
+      - ./asterisk/sorcery.conf:/etc/asterisk/sorcery.conf:ro
       - ./asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
       - ./asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
       - ./asterisk/ari.conf:/etc/asterisk/ari.conf:ro
@@ -427,6 +446,9 @@ services:
       ARI_URL: "http://asterisk:8088"
       ARI_WS_URL: "ws://asterisk:8088/ari/events"
       ARI_APP: "voice-agent"
+      # Fixo, e não do .env: o asterisk/extensions.conf disca `voice-agent:9092`.
+      # O .env.example sugeria 8090 — quem o copiava ficava sem áudio.
+      AUDIOSOCKET_PORT: "9092"
       # Como no app e no worker: a conexão do dono do banco fica no .env só
       # para o kit no host (update.sh do cron); nenhum código de workers/ a lê.
       SUPABASE_DB_ADMIN_URL: ""

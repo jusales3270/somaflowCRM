@@ -7,8 +7,9 @@ import { expect, test, type Page } from "./helpers/test";
 import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
 
 /**
- * TRUNK SIP — só admin escreve, manager só lê, e o bloco de pjsip.conf sai
- * certo depois de salvar.
+ * TRUNK SIP — só admin escreve, manager só lê, salvar mostra o resultado da
+ * aplicação no Asterisk e o estado da conexão, e salvar de novo SEM redigitar a
+ * senha funciona.
  *
  * ## Por que dois papéis, não um
  *
@@ -20,19 +21,26 @@ import { generateTotp, msUntilNextTotpWindow } from "./utils/totp";
  * botão Salvar não aparece, sem precisar de um segundo usuário sem conta
  * nenhuma (RLS/RBAC de leitura já é medido em `tests/invariants/rls-isolation.test.ts`).
  *
- * ## Por que o bloco de pjsip.conf é conferido por conteúdo, não por presença
+ * ## Não há mais bloco para colar
  *
- * `blocoParaColar` só existe na janela entre salvar e a próxima navegação
- * (`ultimoSalvo`, não uma busca do servidor — a senha nunca volta cifrada
- * nem em claro). Um teste que só checasse "o `<pre>` apareceu" passaria com o
- * endpoint, o host ou a senha errados dentro dele — e é exatamente esse bloco
- * que o operador cola no Asterisk de verdade.
+ * Salvar aplica o tronco no Asterisk pela ARI (`lib/voip/tronco-no-asterisk.ts`).
+ * No CI não há Asterisk (o profile `telefonia` não sobe), então o que esta spec
+ * mede é o caminho de quem ainda não ligou a telefonia: salvo, com a tela dizendo
+ * que o tronco entra no ar quando ela for ligada — e o card de estado dizendo o
+ * mesmo. O caminho com Asterisk (Conectado / Recusado / reconciliação) foi
+ * provado à mão contra um Asterisk 20.20.1 e um provedor SIP de teste
+ * (`docs/telefonia-tronco-sip.md`), e a montagem dos objetos e da AMI em
+ * `tests/unit/voip-tronco-no-asterisk.test.ts`.
+ *
+ * ## Salvar sem redigitar a senha
+ *
+ * "Deixe em branco para manter a atual" dava 500 (upsert sem as colunas NOT NULL
+ * de senha). O segundo salvar desta spec é a regressão.
  *
  * ## O que esta spec NÃO prova
  *
- * Não aplica o bloco no Asterisk nem faz uma ligação de teste — isso depende
- * de um trunk SIP real e é medido à mão na VPS (mesmo limite do
- * `voz-desligada-por-padrao.spec.ts` pra chamada real).
+ * Não fala com Asterisk nem faz ligação — isso depende do profile `telefonia`
+ * e de um provedor SIP (mesmo limite do `voz-desligada-por-padrao.spec.ts`).
  *
  * Pré-requisitos (banco local, app buildada):
  *   pnpm exec tsx scripts/seed-e2e-credentials.ts
@@ -103,8 +111,8 @@ async function entrarComoManager(page: Page): Promise<void> {
   await page.waitForURL(/\/app(\/|$)/, { timeout: 20_000 });
 }
 
-test.describe("trunk SIP — permissão e conteúdo do bloco pjsip.conf", () => {
-  test("admin chega pela navegação, salva, e o bloco pra colar tem host/usuário/endpoint certos", async ({
+test.describe("trunk SIP — permissão, aplicação e estado", () => {
+  test("admin chega pela navegação, salva, vê o resultado e o estado, e salva de novo sem a senha", async ({
     page,
   }) => {
     await entrarComoAdmin(page);
@@ -127,18 +135,32 @@ test.describe("trunk SIP — permissão e conteúdo do bloco pjsip.conf", () => 
     await page.locator("#host").fill(host);
     await page.locator("#username").fill(usuario);
     await page.locator("#password").fill(senha);
-    await page.getByRole("button", { name: /^Salvar$/ }).click();
+    const salvar = async () => {
+      const resposta = page.waitForResponse(
+        (r) => r.url().endsWith("/api/v1/voip/trunk") && r.request().method() === "PUT",
+      );
+      await page.getByRole("button", { name: /^Salvar$/ }).click();
+      return resposta;
+    };
 
-    // O bloco só aparece DEPOIS do POST responder — esperar o texto em vez de
-    // um timeout fixo evita flake em CI mais lento.
-    const bloco = page.locator("pre");
-    await expect(bloco, "o bloco pra colar não apareceu depois de salvar").toBeVisible({ timeout: 10_000 });
-    const texto = await bloco.innerText();
+    const primeira = await salvar();
+    expect(primeira.status(), "salvar o tronco pela primeira vez falhou").toBe(200);
+    const resultado = page.getByTestId("resultado-da-aplicacao");
+    // Sem Asterisk no CI: salvo, e a tela diz que entra no ar quando a telefonia for ligada.
+    await expect(resultado).toContainText("Salvo", { timeout: 10_000 });
+    await expect(resultado).toContainText("telefonia não está ligada");
+    const estado = page.locator('[data-testid="status-do-tronco"] [data-estado]');
+    await expect(estado).toHaveAttribute("data-estado", "sem_telefonia", { timeout: 10_000 });
 
-    expect(texto, "o bloco não referencia o host salvo em nenhuma linha").toContain(host);
-    expect(texto, "o bloco não tem o usuário salvo (from_user=)").toContain(`from_user=${usuario}`);
-    expect(texto, "o bloco não tem a senha salva (password=)").toContain(`password=${senha}`);
-    expect(texto, "o bloco não declara um endpoint [nome]").toMatch(/^\[[^\]]+\]/);
+    // A senha não volta para a tela: o campo esvazia e só os últimos 4 aparecem.
+    await expect(page.locator("#password")).toHaveValue("");
+    await expect(page.getByText(`termina em ${senha.slice(-4)}`)).toBeVisible();
+
+    // REGRESSÃO do 500: salvar de novo SEM redigitar a senha (desativando).
+    await page.locator("#is_active").click();
+    const segunda = await salvar();
+    expect(segunda.status(), "salvar sem redigitar a senha voltou a dar erro").toBe(200);
+    await expect(estado).toHaveAttribute("data-estado", "sem_telefonia");
 
     // ── QUALIDADE DE TELA ────────────────────────────────────────────────
     // O BLOCO SAI DA VARREDURA, e não é conveniência: a guarda abaixo é sobre a
@@ -149,7 +171,7 @@ test.describe("trunk SIP — permissão e conteúdo do bloco pjsip.conf", () => 
     // hora do dia, e passava na hora seguinte. Além de excluir o bloco, limpamos o host
     // e garantimos dígito no sufixo.
     const corpo = (await page.locator("body").innerText()).trim();
-    const corpoSemOBloco = corpo.replace(texto, "").replaceAll(host, "").trim();
+    const corpoSemOBloco = corpo.replaceAll(host, "").replaceAll(usuario, "").trim();
     expect(corpoSemOBloco, "a tela mostra o que parece uma chave de tradução crua").not.toMatch(
       /\b[a-z]+(?:[._][a-z]+){2,}\b/,
     );

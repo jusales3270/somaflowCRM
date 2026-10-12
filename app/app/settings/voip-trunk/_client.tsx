@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useT } from "@/hooks/i18n/useT";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
-import { copyToClipboard } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,7 +26,120 @@ export interface TrunkSettingsRow {
   updated_at: string;
 }
 
+type MotivoDaAplicacao = "sem_telefonia" | "asterisk_inacessivel" | "recusado_pelo_asterisk";
+type Aplicacao = { ok: true } | { ok: false; motivo: MotivoDaAplicacao; detalhe?: string };
+
+type EstadoDoTronco =
+  | "nao_cadastrado"
+  | "sem_telefonia"
+  | "asterisk_fora"
+  | "desativado"
+  | "nao_aplicado"
+  | "conectado"
+  | "recusado"
+  | "conectando"
+  | "sem_resposta"
+  | "provedor_responde";
+
 const queryKey = ["voip", "trunk"] as const;
+const statusKey = ["voip", "trunk", "status"] as const;
+
+/**
+ * O que cada estado diz para quem opera, e o tom do indicador. A mensagem diz o
+ * PRÓXIMO PASSO, não só o que houve: "recusou" sem "confira a senha" deixa a
+ * pessoa sem saber o que fazer.
+ */
+type Tom = "ok" | "atencao" | "erro" | "neutro";
+
+function textosDosEstados(
+  t: (texto: string) => string,
+): Record<EstadoDoTronco, { tom: Tom; titulo: string; texto: string }> {
+  return {
+    conectado: {
+      tom: "ok",
+      titulo: t("Conectado"),
+      texto: t("O provedor aceitou o login. As ligações podem entrar e sair por este tronco."),
+    },
+    conectando: {
+      tom: "atencao",
+      titulo: t("Conectando"),
+      texto: t(
+        "O provedor respondeu e o login está em andamento. Verifique de novo em alguns segundos.",
+      ),
+    },
+    recusado: {
+      tom: "erro",
+      titulo: t("O provedor recusou o login"),
+      texto: t("Confira com o provedor o usuário e a senha, corrija aqui e salve de novo."),
+    },
+    sem_resposta: {
+      tom: "erro",
+      titulo: t("O provedor não responde"),
+      texto: t(
+        "Confira o host e a porta. Se estiverem certos, o firewall da VPS precisa liberar a porta UDP 5060 e a faixa 10000–10200.",
+      ),
+    },
+    provedor_responde: {
+      tom: "atencao",
+      titulo: t("O provedor responde"),
+      texto: t(
+        "Não deu para confirmar se o login foi aceito: o servidor de telefonia desta instalação é de uma versão anterior. Atualize a instalação para ver o estado completo.",
+      ),
+    },
+    nao_aplicado: {
+      tom: "atencao",
+      titulo: t("Salvo, ainda não aplicado"),
+      texto: t(
+        "O tronco está salvo, mas ainda não chegou ao servidor de telefonia. Ele é aplicado automaticamente em até 10 minutos — ou salve de novo.",
+      ),
+    },
+    desativado: {
+      tom: "neutro",
+      titulo: t("Desativado"),
+      texto: t("Nenhuma ligação entra nem sai por este tronco."),
+    },
+    asterisk_fora: {
+      tom: "erro",
+      titulo: t("O servidor de telefonia não respondeu"),
+      texto: t(
+        "Ele pode estar reiniciando. Se continuar assim, quem administra o servidor deve conferir o contêiner do Asterisk.",
+      ),
+    },
+    sem_telefonia: {
+      tom: "neutro",
+      titulo: t("Telefonia desligada nesta instalação"),
+      texto: t(
+        "Quem administra o servidor liga o módulo de telefonia. O tronco fica guardado e entra no ar sozinho quando ela for ligada.",
+      ),
+    },
+    nao_cadastrado: {
+      tom: "neutro",
+      titulo: t("Nenhum tronco cadastrado"),
+      texto: t("Preencha os dados do seu provedor SIP abaixo e salve."),
+    },
+  };
+}
+
+const COR_DO_TOM = {
+  ok: "bg-emerald-500",
+  atencao: "bg-amber-500",
+  erro: "bg-red-500",
+  neutro: "bg-zinc-400",
+} as const;
+
+function useStatusDoTronco() {
+  return useQuery({
+    queryKey: statusKey,
+    queryFn: async () => {
+      const res = await apiClient.get<{ data: { estado: EstadoDoTronco; verificado_em: string } }>(
+        "/api/v1/voip/trunk/status",
+      );
+      return res.data;
+    },
+    // Enquanto conecta, o estado muda em segundos: confere de novo sozinho.
+    refetchInterval: (q) => (q.state.data?.estado === "conectando" ? 5_000 : false),
+  });
+}
 
 function useTrunkSettings(initialData: TrunkSettingsRow | null) {
   return useQuery({
@@ -73,17 +185,13 @@ export function TrunkSettingsClient({
   canWrite: boolean;
 }) {
   const t = useT();
-  const [copiou, setCopiou] = useState<boolean | null>(null);
   const { data: trunk } = useTrunkSettings(initialData);
+  const status = useStatusDoTronco();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(() => estadoInicial(trunk));
-  // Guarda o que foi SALVO com sucesso (não o form ao vivo) — sem isto o bloco
-  // de cópia mudaria a cada tecla digitada, antes da senha nova existir de
-  // verdade no banco. O servidor nunca devolve a senha de volta (nem cifrada);
-  // isto é a ÚNICA janela em que o bloco completo (com senha) existe pronto
-  // pra colar — o mesmo espírito de "a chave nunca mais aparece depois de
-  // salva" da tela de Credenciais de IA.
-  const [ultimoSalvo, setUltimoSalvo] = useState<FormState | null>(null);
+  // O resultado de levar o tronco ao Asterisk, devolvido pelo PUT. Não há mais
+  // bloco para colar em pjsip.conf: salvar aplica (lib/voip/tronco-no-asterisk.ts).
+  const [aplicacao, setAplicacao] = useState<Aplicacao | null>(null);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -95,49 +203,58 @@ export function TrunkSettingsClient({
         is_active: form.is_active,
       };
       if (form.password) body.password = form.password;
-      const res = await apiClient.put<{ data: TrunkSettingsRow }>("/api/v1/voip/trunk", body);
+      const res = await apiClient.put<{ data: TrunkSettingsRow & { aplicacao?: Aplicacao } }>(
+        "/api/v1/voip/trunk",
+        body,
+      );
       return res.data;
     },
-    onSuccess: (row) => {
-      setUltimoSalvo({ ...form });
+    onSuccess: ({ aplicacao: resultado, ...row }) => {
+      setAplicacao(resultado ?? null);
       setForm((f) => ({ ...f, password: "" }));
       queryClient.setQueryData(queryKey, row);
+      void queryClient.invalidateQueries({ queryKey: statusKey });
     },
     onError: (err) => showApiError(err),
   });
 
-  const blocoParaColar = ultimoSalvo
-    ? `[${trunk?.endpoint_name ?? ""}]
-type=endpoint
-context=from-trunk
-disallow=all
-allow=ulaw
-allow=alaw
-outbound_auth=${trunk?.endpoint_name ?? ""}-auth
-aors=${trunk?.endpoint_name ?? ""}-aor
-from_user=${ultimoSalvo.username}
-${ultimoSalvo.from_domain ? `from_domain=${ultimoSalvo.from_domain}` : ""}
-
-[${trunk?.endpoint_name ?? ""}-auth]
-type=auth
-auth_type=userpass
-username=${ultimoSalvo.username}
-password=${ultimoSalvo.password || "(senha não alterada nesta sessão — use a já configurada)"}
-
-[${trunk?.endpoint_name ?? ""}-aor]
-type=aor
-contact=sip:${ultimoSalvo.host}:${ultimoSalvo.port}
-
-[${trunk?.endpoint_name ?? ""}-registration]
-type=registration
-outbound_auth=${trunk?.endpoint_name ?? ""}-auth
-server_uri=sip:${ultimoSalvo.host}:${ultimoSalvo.port}
-client_uri=sip:${ultimoSalvo.username}@${ultimoSalvo.host}:${ultimoSalvo.port}
-retry_interval=60`
-    : null;
+  const estado = status.data?.estado;
+  const descricao = estado ? textosDosEstados(t)[estado] : null;
 
   return (
     <div className="flex max-w-2xl flex-col gap-6">
+      <Card data-testid="status-do-tronco">
+        <CardHeader>
+          <CardTitle>{t("Conexão com o provedor")}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {descricao ? (
+            <div className="flex items-start gap-3" role="status" data-estado={estado}>
+              <span
+                aria-hidden
+                className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${COR_DO_TOM[descricao.tom]}`}
+              />
+              <div>
+                <p className="text-sm font-medium">{descricao.titulo}</p>
+                <p className="text-sm text-muted-foreground">{descricao.texto}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {status.isError ? t("Não foi possível verificar agora.") : t("Verificando...")}
+            </p>
+          )}
+          <Button
+            variant="outline"
+            className="w-fit"
+            disabled={status.isFetching}
+            onClick={() => void status.refetch()}
+          >
+            {status.isFetching ? t("Verificando...") : t("Verificar agora")}
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>{t("Provedor SIP")}</CardTitle>
@@ -210,46 +327,35 @@ retry_interval=60`
             <Label htmlFor="is_active">{t("Ativo")}</Label>
           </div>
           {canWrite && (
-            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending} className="w-fit">
+            <Button
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+              className="w-fit"
+            >
               {mutation.isPending ? t("Salvando...") : t("Salvar")}
             </Button>
           )}
+          {aplicacao ? (
+            <p
+              role={aplicacao.ok ? "status" : "alert"}
+              data-testid="resultado-da-aplicacao"
+              className="text-sm text-muted-foreground"
+            >
+              {aplicacao.ok
+                ? t("Salvo e aplicado no servidor de telefonia.")
+                : aplicacao.motivo === "sem_telefonia"
+                  ? t(
+                      "Salvo. A telefonia não está ligada nesta instalação: o tronco entra no ar quando ela for ligada.",
+                    )
+                  : aplicacao.motivo === "asterisk_inacessivel"
+                    ? t(
+                        "Salvo, mas o servidor de telefonia não respondeu agora. O tronco é aplicado automaticamente em até 10 minutos.",
+                      )
+                    : `${t("Salvo, mas o servidor de telefonia recusou a configuração.")} ${aplicacao.detalhe ?? ""}`}
+            </p>
+          ) : null}
         </CardContent>
       </Card>
-
-      {blocoParaColar && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t("Cole em asterisk/pjsip.conf")}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              {t(
-                "Só aparece agora, logo após salvar — a senha não é guardada em claro, então este bloco completo não pode ser reconstruído depois.",
-              )}
-            </p>
-            <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">{blocoParaColar}</pre>
-            {/*
-              Sempre `copyToClipboard`, nunca a API do navegador direto: ela só
-              existe em contexto seguro, e o self-host servido por http://IP não
-              é um — ali o botão não fazia nada, calado. O helper cai para
-              textarea + execCommand e devolve se funcionou.
-            */}
-            <Button
-              variant="outline"
-              className="w-fit"
-              onClick={async () => setCopiou(await copyToClipboard(blocoParaColar))}
-            >
-              {t(copiou === true ? "Copiado" : "Copiar")}
-            </Button>
-            {copiou === false && (
-              <p role="alert" className="text-sm text-muted-foreground">
-                {t("Não consegui copiar. Selecione o bloco acima e copie à mão.")}
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

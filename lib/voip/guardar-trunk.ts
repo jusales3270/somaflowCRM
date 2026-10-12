@@ -79,9 +79,17 @@ export async function guardarTrunk(p: PedidoDeGuardarTrunk): Promise<ResultadoDe
     };
   }
 
-  const { error } = await p.admin
-    .from("voip_trunk_settings")
-    .upsert({ ...camposComuns, ...camposDeSenha }, { onConflict: "organization_id" });
+  // UPDATE quando a linha já existe, e nunca upsert: as colunas de senha são
+  // NOT NULL, e o `INSERT … ON CONFLICT DO UPDATE` do upsert monta a linha de
+  // INSERT inteira antes de saber que vai atualizar — sem senha nova, ela sai
+  // com `password_*` nulos e o Postgres recusa. Era o 500 de "deixe em branco
+  // para manter a atual", a frase que a própria tela mostra.
+  const { error } = existente
+    ? await p.admin
+        .from("voip_trunk_settings")
+        .update({ ...camposComuns, ...camposDeSenha })
+        .eq("organization_id", p.orgId)
+    : await p.admin.from("voip_trunk_settings").insert({ ...camposComuns, ...camposDeSenha });
 
   if (error) {
     return { ok: false, motivo: "banco", detalhe: error.message };

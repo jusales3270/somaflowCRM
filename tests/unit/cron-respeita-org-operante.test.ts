@@ -78,6 +78,7 @@ const SEM_FILTRO: Record<string, string> = {
   "snooze-watcher": "só reabre conversa adiada; sem custo nem saída",
   "storage-redaction": "LGPD e retenção nunca são bloqueadas (spec §1.3)",
   "sync-model-catalog": "catálogo da instalação inteira; não pertence a organização nenhuma",
+  "voip-tronco": "só reflete no Asterisk o tronco salvo na tela; não origina ligação nem fala com cliente",
   "webhook-log-retention": "retenção do arquivo de webhook: obrigação, nunca bloqueada",
   "webhook-replay": "reprocessa ENTRADA do WAHA; mensagem que chega continua gravada (spec §1.3)",
 };

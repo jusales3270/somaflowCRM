@@ -34,6 +34,7 @@ import { validateRequest } from "@/lib/schemas/_validate";
 import { createClient } from "@/lib/supabase/server";
 import { originateCall } from "@/lib/voip/ariClient";
 import { idsDeContatosPessoais } from "@/app/api/v1/conversations/_handler";
+import { discagemDoEndpoint } from "@/lib/voip/tronco-no-asterisk";
 
 export const dynamic = "force-dynamic";
 
@@ -206,8 +207,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     .select("endpoint_name, is_active")
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
-  const trunkEndpoint =
+  // A tela grava só o nome do endpoint; o originate quer `PJSIP/<nome>` —
+  // `discagemDoEndpoint` põe o prefixo (o do env já vem com ele e passa intacto).
+  const endpointDoTronco =
     trunkConfig && trunkConfig.is_active ? trunkConfig.endpoint_name : process.env.VOIP_TRUNK_ENDPOINT;
+  const trunkEndpoint = endpointDoTronco ? discagemDoEndpoint(endpointDoTronco) : undefined;
   if (!trunkEndpoint) {
     return fail(
       "trunk_not_configured",

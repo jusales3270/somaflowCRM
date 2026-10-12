@@ -762,6 +762,9 @@ export const AUDIT_ACTIONS = [
   "call.created",
   "voip_trunk.created",
   "voip_trunk.updated",
+  // SomaFlow: o cron voip-tronco recolocou ou tirou o tronco do Asterisk (só quando mudou).
+  "voip_trunk.aplicado_no_asterisk",
+  "voip_trunk.removido_do_asterisk",
 
   // Chamada de voz WhatsApp (spec 18, migration 0234). Ligá-la vincula um
   // SEGUNDO aparelho ao número que já atende, por um caminho que não é o
