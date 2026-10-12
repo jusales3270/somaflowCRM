@@ -4,9 +4,13 @@
  * PUT /api/v1/voip/trunk — cria ou atualiza (admin). Uma linha por
  *                           organização (upsert em organization_id).
  *
- * Aplicar no Asterisk (asterisk/pjsip.conf) continua MANUAL nesta fase — ver
- * migration 0349. `password` no body é opcional numa atualização (mantém a
- * senha já cifrada se omitida), obrigatório na primeira vez.
+ * Salvar já APLICA no Asterisk, pela ARI (`lib/voip/tronco-no-asterisk.ts`):
+ * ativo cria o tronco, desativado o remove. A resposta traz `aplicacao` —
+ * `{ ok: true }` ou o motivo (sem telefonia na instalação, Asterisk fora,
+ * recusado). Falhar ao aplicar NÃO desfaz o que foi salvo: o banco é a fonte, e
+ * o cron `voip-tronco` aplica quando o Asterisk voltar. `password` no body é
+ * opcional numa atualização (mantém a senha já cifrada se omitida), obrigatório
+ * na primeira vez.
  */
 import { requireSupportWrite } from "@/lib/impersonate/support";
 import { randomUUID } from "node:crypto";
@@ -18,6 +22,8 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { guardarTrunk } from "@/lib/voip/guardar-trunk";
+import { sincronizarTronco } from "@/lib/voip/tronco-da-organizacao";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -98,11 +104,24 @@ export async function PUT(req: NextRequest): Promise<Response> {
     return fail("internal_error", "Erro ao salvar o trunk SIP.", 500, { requestId, details: guardado.detalhe });
   }
 
-  const { data: created } = await createAdminClient()
+  const admin = createAdminClient();
+  let aplicacao: Awaited<ReturnType<typeof sincronizarTronco>>;
+  try {
+    aplicacao = await sincronizarTronco(admin, activeOrg.orgId, input.password);
+  } catch (err) {
+    aplicacao = { ok: false, motivo: "asterisk_inacessivel" };
+    logger.warn("[voip-trunk] aplicar no Asterisk falhou", {
+      organization_id: activeOrg.orgId,
+      error: err instanceof Error ? err.message : String(err),
+      request_id: requestId,
+    });
+  }
+
+  const { data: created } = await admin
     .from("voip_trunk_settings_safe")
     .select(SAFE_COLUMNS)
     .eq("organization_id", activeOrg.orgId)
     .single();
 
-  return ok(created, { requestId });
+  return ok({ ...(created ?? {}), aplicacao }, { requestId });
 }

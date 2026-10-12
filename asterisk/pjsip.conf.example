@@ -1,6 +1,16 @@
 ; asterisk/pjsip.conf.example
-; Copiar pra pjsip.conf (git-ignorado, tem credenciais reais) e preencher
-; com os dados do SEU provedor de trunk SIP genérico.
+; Copiar pra pjsip.conf (git-ignorado) e trocar SEU_IP_PUBLICO pelo IP público
+; da VPS. É SÓ ISSO que o arquivo precisa ter.
+;
+; O TRONCO DO PROVEDOR NÃO MORA MAIS AQUI: cadastre-o na tela Configurações ›
+; Trunk SIP. Ao salvar, o CRM cria o tronco da organização no Asterisk pela ARI
+; (asterisk/sorcery.conf + lib/voip/tronco-no-asterisk.ts), sem reiniciar nada,
+; e a tela mostra se o provedor aceitou o login.
+;
+; Os blocos `trunk-*` abaixo ficam como ALTERNATIVA MANUAL, comentados: quem já
+; os usa pode mantê-los (o arquivo continua sendo lido antes do que a tela
+; grava). Para usar o tronco da tela, a linha da organização tem de estar ativa
+; na tela, e não é preciso descomentar nada.
 
 [transport-udp]
 type=transport
@@ -15,44 +25,44 @@ external_signaling_address=SEU_IP_PUBLICO
 local_net=172.16.0.0/12
 
 ; ---------- Autenticação no seu provedor ----------
-[trunk-auth]
-type=auth
-auth_type=userpass
-username=SEU_USUARIO_SIP
-password=SUA_SENHA_SIP
+;[trunk-auth]
+;type=auth
+;auth_type=userpass
+;username=SEU_USUARIO_SIP
+;password=SUA_SENHA_SIP
 
 ; ---------- Onde o provedor está (endereço de registro/proxy) ----------
-[trunk-aor]
-type=aor
-contact=sip:SEU_PROVEDOR_SIP:5060
-qualify_frequency=30
+;[trunk-aor]
+;type=aor
+;contact=sip:SEU_PROVEDOR_SIP:5060
+;qualify_frequency=30
 
-[trunk-identify]
-type=identify
-endpoint=trunk-endpoint
-match=SEU_PROVEDOR_SIP   ; IP ou host do provedor — usado pra reconhecer chamadas de entrada
+;[trunk-identify]
+;type=identify
+;endpoint=trunk-endpoint
+;match=SEU_PROVEDOR_SIP   ; IP ou host do provedor — usado pra reconhecer chamadas de entrada
 
 ; ---------- Registration (se o provedor exigir REGISTER) ----------
-[trunk-registration]
-type=registration
-outbound_auth=trunk-auth
-server_uri=sip:SEU_PROVEDOR_SIP
-client_uri=sip:SEU_USUARIO_SIP@SEU_PROVEDOR_SIP
-retry_interval=60
+;[trunk-registration]
+;type=registration
+;outbound_auth=trunk-auth
+;server_uri=sip:SEU_PROVEDOR_SIP
+;client_uri=sip:SEU_USUARIO_SIP@SEU_PROVEDOR_SIP
+;retry_interval=60
 
 ; ---------- Endpoint (referenciado em ariClient.ts como trunkEndpoint) ----------
-[trunk-endpoint]
-type=endpoint
-transport=transport-udp
-context=from-trunk           ; ver extensions.conf — pra onde vai a chamada de ENTRADA
-disallow=all
-allow=ulaw                   ; casa com o formato usado no AudioSocket (evita transcodificação)
-allow=alaw
-outbound_auth=trunk-auth
-aors=trunk-aor
-from_user=SEU_USUARIO_SIP
+;[trunk-endpoint]
+;type=endpoint
+;transport=transport-udp
+;context=from-trunk           ; ver extensions.conf — pra onde vai a chamada de ENTRADA
+;disallow=all
+;allow=ulaw                   ; casa com o formato usado no AudioSocket (evita transcodificação)
+;allow=alaw
+;outbound_auth=trunk-auth
+;aors=trunk-aor
+;from_user=SEU_USUARIO_SIP
 ; Sem isto, o header From vaza o IP PRIVADO do container mesmo com
 ; external_signaling_address certo no transport — testado ao vivo via
 ; tcpdump: alguns provedores (ex.: NextBilling) matam a ligação com BYE ~1s
 ; depois do 183 se virem um From malformado/privado.
-from_domain=SEU_IP_PUBLICO
+;from_domain=SEU_IP_PUBLICO

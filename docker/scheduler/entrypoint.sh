@@ -119,6 +119,10 @@ CRONS="
 0 12 * * *|60|api/v1/cron/lgpd-sla-watcher
 30 3 * * *|120|api/v1/cron/kb-conversations-batch
 15 4 * * *|60|api/v1/cron/sync-model-catalog
+# O TRONCO SIP NO ASTERISK. Salvar na tela já aplica; esta batida recoloca o
+# que sumiu (Asterisk recriado, telefonia ligada depois). Sem telefonia ou sem
+# tronco, sai sem tocar em nada.
+*/10 * * * *|60|api/v1/cron/voip-tronco
 # A COTAÇÃO DO DÓLAR (PTAX). O Banco Central publica perto das 13h de Brasília
 # (16h UTC): a batida das 16h40 pega a do dia, e a das 23h10 cobre o dia em que
 # a publicação atrasou. Cada rodada pede os últimos 10 dias, então um dia perdido

@@ -35,11 +35,9 @@ export default async function TrunkSettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{traduzir("Trunk SIP", idioma)}</h1>
         <p className="text-sm text-muted-foreground">
           {traduzir(
-            "Credenciais de registro do seu provedor SIP (Asterisk/AudioSocket). Depois de salvar, aplique o bloco abaixo em",
+            "Os dados de acesso do seu provedor SIP. Ao salvar, o tronco é aplicado no servidor de telefonia desta instalação — sem editar arquivo nenhum — e o estado da conexão aparece logo abaixo.",
             idioma,
-          )}{" "}
-          <code>asterisk/pjsip.conf</code>{" "}
-          {traduzir("na VPS — a aplicação ainda é manual.", idioma)}
+          )}
         </p>
       </header>
       <TrunkSettingsClient initialData={(data as TrunkSettingsRow | null) ?? null} canWrite={canWrite} />

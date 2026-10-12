@@ -299,9 +299,10 @@ const DO_SERVIDOR: RecursoOpcional[] = [
     nivel: "servidor",
     padrao: "desligado",
     quemDecide: "dono_do_servidor",
-    href: null,
-    comoLigar: "No servidor, telefonia em COMPOSE_PROFILES e os arquivos do Asterisk. Este app não enxerga isso.",
-    ler: () => "nao_verificado",
+    href: "/app/settings/voip-trunk",
+    comoLigar:
+      "No servidor, telefonia em COMPOSE_PROFILES, a senha da ARI no .env e o IP público em asterisk/pjsip.conf. O tronco do provedor se cadastra na tela Trunk SIP (docs/telefonia-tronco-sip.md).",
+    ler: peloServidor("telefonia_sip"),
   },
   {
     id: "nuvemshop",

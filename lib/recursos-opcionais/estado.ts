@@ -25,6 +25,7 @@ import { isConfigured as nuvemshopConfigurada } from "@/lib/nuvemshop/config";
 import { googleAdsEstaConfigurado } from "@/lib/plataformas-de-anuncio/google/config";
 import { getWacallsClient } from "@/lib/wacalls/client";
 import { resolveServidorDeVideo } from "@/lib/video/jitsi";
+import { asteriskAlcancavel, configDaAriDoAmbiente } from "@/lib/voip/tronco-no-asterisk";
 
 import type { FontesDeEstado } from "./catalogo";
 
@@ -57,6 +58,12 @@ export async function detectarServidor(): Promise<Record<string, boolean | null>
     // botão. Reusa `resolveServidorDeVideo` (não `servidorDeVideo()`) para não
     // depender de `window` num arquivo de servidor.
     detectar("videochamada_jitsi", () => resolveServidorDeVideo(env.JITSI_SERVER_URL) !== null),
+    // Ligada = o Asterisk do profile `telefonia` responde na ARI. Sem as
+    // credenciais da ARI no ambiente, nem tenta: desligada.
+    detectar("telefonia_sip", async () => {
+      const cfg = configDaAriDoAmbiente();
+      return cfg ? asteriskAlcancavel(cfg) : false;
+    }),
     detectar("nuvemshop", nuvemshopConfigurada),
     detectar("google_ads", () => googleAdsEstaConfigurado()),
     detectar("web_push", vapidPronto),
