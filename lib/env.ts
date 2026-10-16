@@ -321,6 +321,10 @@ const schema = z.object({
   // daqui, é por organização (BYOK). Quem lê é `baseDaApiDoJev()`, em
   // lib/ai/decisao/cliente.ts.
   JEV_API_BASE_URL: z.string().optional().default(""),
+  // Endereço da API da CNPJá (busca de empresas da prospecção B2B). Vazio vale
+  // https://api.cnpja.com. Existe para o dublê do e2e — a CHAVE é por organização,
+  // na tela de Prospecção. Quem lê é `baseDaCnpja()` (lib/prospecting/b2b/cnpja.ts).
+  CNPJA_API_BASE_URL: z.string().optional().default(""),
   // Endereço de TESTE da API do provedor de cobrança. Existe só para o dublê
   // do e2e (tests/e2e/fixtures/provedor-de-cobranca.ts, porta 3995). Quem lê é
   // `baseDeTesteDaCobranca()` (lib/cobranca/provedores/base-de-teste.ts), que

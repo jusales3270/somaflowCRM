@@ -235,6 +235,10 @@ export const AUDIT_ACTIONS = [
   "ai_agent.run_failed",
   "channel.connected",
   "prospecting.changed",
+  // Prospecção B2B por CNPJ (migration 9002): chave salva, busca feita, seleção.
+  "prospecting_b2b.changed",
+  // Lista de empresas exportada em CSV — dado que sai do sistema; a contagem vai no metadata.
+  "prospecting_b2b.exported",
   // A ABORDAGEM que SAIU (PR #963). Distinta de `prospecting.changed`, que é
   // configuração: esta é a única linha do produto que fala primeiro com quem
   // nunca falou com a empresa, e é a resposta a "por que vocês me escreveram?".

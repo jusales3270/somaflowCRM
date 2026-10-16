@@ -143,6 +143,8 @@ export const PUBLIC_PATHS: RegExp[] = [
   /^\/api\/v1\/ai\/agents$/,
   /^\/api\/v1\/ai\/agents\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/versions$/i,
   /^\/api\/v1\/prospecting$/,
+  // Prospecção B2B por CNPJ: a rota decide por cookie OU bearer (resolveAuthDual, admin).
+  /^\/api\/v1\/prospecting\/b2b(\/exportar)?$/,
   /^\/api\/v1\/agenda\/tipos$/,
   // VERSÃO, PUBLICAÇÃO E TESTE DO AGENTE SERVER-TO-SERVER (issue #2052).
   // Mesma dualidade das linhas acima: sessão OU Bearer `dsk_…`, resolvidos por

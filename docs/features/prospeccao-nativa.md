@@ -1,5 +1,8 @@
 # Prospecção nativa
 
+> Este é o nível **Negócios locais (Google Maps)**. Para buscar empresas por CNAE, cidade e porte
+> (faturamento acima de R$ 4,8 mi/ano), veja o nível **Empresas B2B (CNPJ)**: [prospeccao-b2b.md](prospeccao-b2b.md).
+
 Em **CRM → Prospecção**, um administrador configura a chave Apify, pesquisa empresas no Brasil por segmento/região e consulta dados comerciais. O adaptador usa o mesmo Actor Google Maps dos fluxos existentes. Não depende de n8n nem grava em Airtable.
 
 A busca é paga pelo saldo da conta Apify: limite de até 100 empresas e teto de US$ 0,50 a US$ 10 por execução. A quantidade pode ser menor. O enriquecimento consulta e-mails comerciais e redes do site, sem buscar pessoas físicas ou decisores. Chave cifrada por `fn_encrypt_oauth`, indisponível aos papéis do navegador. Não existe chave obrigatória no `.env`.
