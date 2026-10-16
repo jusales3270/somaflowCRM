@@ -38,7 +38,6 @@ async function handle(req: NextRequest) {
           organizationId: d.organizacao,
           actorUserId: null,
           resourceType: "prospecting_b2b",
-          resourceId: d.rodada,
           metadata: { operation: "enrich_cron", run_id: d.rodada, empresas: d.empresas, status: d.status, gasto_usd: d.gasto_micro / 1_000_000 },
           requestId,
         });
