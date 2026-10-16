@@ -5,10 +5,12 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
 import { BudgetCard } from "@/components/ai/BudgetCard";
 import { CustoDasLigacoesCard } from "@/components/ai/CustoDasLigacoesCard";
+import { CustoDosProvedoresCard } from "@/components/ai/CustoDosProvedoresCard";
 import { custoDasLigacoesSchema, type CustoDasLigacoes } from "@/lib/ai/usage/custo-das-ligacoes";
 import { getBudgetStatus } from "@/lib/ai/budget/check";
 import { traduzir } from "@/lib/i18n/dicionario";
 import { logger } from "@/lib/logger";
+import { lerCustoDosProvedores } from "@/lib/prospecting/b2b/custos";
 import { UsageDashboardClient } from "./_client";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +57,8 @@ export default async function AiUsagePage({ searchParams }: PageProps) {
 
   const budget = await getBudgetStatus(activeOrg.orgId);
   const custoDasLigacoes = await lerCustoDasLigacoes(supabase, activeOrg.orgId);
+  // A org vem da sessão (resolveActiveOrg), nunca da URL: a leitura é service role.
+  const custoDosProvedores = await lerCustoDosProvedores(activeOrg.orgId).catch(() => null);
   const isAdmin = ROLE_RANK[activeOrg.role] >= ROLE_RANK.admin;
   const idioma = user.idioma;
 
@@ -71,6 +75,7 @@ export default async function AiUsagePage({ searchParams }: PageProps) {
       </header>
       <BudgetCard initialData={budget} isAdmin={isAdmin} />
       {custoDasLigacoes ? <CustoDasLigacoesCard custo={custoDasLigacoes} idioma={idioma} /> : null}
+      {custoDosProvedores ? <CustoDosProvedoresCard custo={custoDosProvedores} idioma={idioma} /> : null}
       <UsageDashboardClient agents={agents} initial={initial} />
     </div>
   );

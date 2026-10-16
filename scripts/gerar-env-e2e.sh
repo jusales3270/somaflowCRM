@@ -172,6 +172,7 @@ JEV_API_BASE_URL=http://127.0.0.1:3996
 # que a spec \`prospeccao-b2b\` sobe nesta porta — a 3994, vizinha das de cima.
 # Fora daquela spec nada escuta aqui: a busca B2B só roda com a chave da CNPJá salva.
 CNPJA_API_BASE_URL=http://127.0.0.1:3994
+TREG_API_BASE_URL=http://127.0.0.1:3993
 
 # O provedor de cobranca (Stripe) fala com o duble tests/e2e/fixtures/provedor-de-cobranca.ts,
 # que a spec cobranca-revendedor sobe nesta porta, vizinha da do Jev. O servidor

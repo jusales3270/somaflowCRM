@@ -3,7 +3,7 @@
  * busca, em CSV (`;`, UTF-8 com BOM: abre direto no Excel em português).
  *
  * Exportar é dado saindo do sistema: audita `prospecting_b2b.exported` com a
- * contagem. Só admin, por sessão ou bearer.
+ * contagem de empresas e de decisores (uma linha por decisor). Só admin, por sessão ou bearer.
  */
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
       [org, searchId],
     );
     if (!existe.rows[0]) return fail("not_found", "Busca não encontrada.", 404, { requestId });
-    const { csv, linhas } = await exportarCsv(db, org, searchId);
+    const { csv, linhas, empresas, decisores } = await exportarCsv(db, org, searchId);
     void audit({
       action: "prospecting_b2b.exported",
       organizationId: org,
@@ -47,7 +47,8 @@ export async function GET(req: NextRequest) {
       actorApiTokenId: auth.apiTokenId ?? null,
       resourceType: "prospecting_b2b",
       resourceId: searchId,
-      metadata: { search_id: searchId, empresas: linhas },
+      // Decisor é dado de PESSOA: a contagem dele sai no rastro da exportação.
+      metadata: { search_id: searchId, linhas, empresas, decisores },
       requestId,
     });
     const nome = String(existe.rows[0].name ?? "empresas")

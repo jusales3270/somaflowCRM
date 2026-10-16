@@ -872,6 +872,11 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "endpoint da plataforma que roda o crawler do Google Places (`lib/prospecting/provider.ts`). É o destino do request, com a chave da PRÓPRIA organização — trocar pelo domínio do revendedor quebraria a chamada, e esconder o nome não esconde para onde o dado vai.",
   },
+  "treg.to": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "API que acha os decisores das empresas escolhidas na prospecção B2B (`lib/prospecting/b2b/treg.ts`), com o token da PRÓPRIA organização. É o destino do request; `TREG_API_BASE_URL` só troca para o dublê de teste.",
+  },
   "api.cnpja.com": {
     categoria: "FORNECEDOR",
     motivo:

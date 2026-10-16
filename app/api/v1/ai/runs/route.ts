@@ -14,7 +14,7 @@ import type { NextRequest } from "next/server";
 import { fail, ok } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
 import { PROVEDOR_DO_JEV } from "@/lib/ai/decisao/credencial";
-import { CONFERENCIA_DE_CAMPO, PEDIDOS_DO_CLIENTE, rotuloDaChamadaDoJev } from "@/lib/ai/decisao/tarefas";
+import { ADERENCIA_B2B, CONFERENCIA_DE_CAMPO, PEDIDOS_DO_CLIENTE, rotuloDaChamadaDoJev } from "@/lib/ai/decisao/tarefas";
 import {
   JEV_FALHOU_AO_LADO,
   JEV_FALHOU_E_A_IA_COBRIU,
@@ -133,7 +133,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   const execucoes = ((data ?? []) as LinhaDeExecucao[]).map((l) => {
     const ponto = PONTO_POR_ID.get(l.purpose);
     // As chamadas do Jev sem ponto (os pedidos, a conferência de campo) têm o porquê delas.
-    const chamadaSemPonto = [PEDIDOS_DO_CLIENTE, CONFERENCIA_DE_CAMPO].find((c) => c.purpose === l.purpose);
+    const chamadaSemPonto = [PEDIDOS_DO_CLIENTE, CONFERENCIA_DE_CAMPO, ADERENCIA_B2B].find((c) => c.purpose === l.purpose);
     return {
       ...l,
       // O nome de gente do ponto. Sem isto a tela mostraria `flywheel_judge`, e

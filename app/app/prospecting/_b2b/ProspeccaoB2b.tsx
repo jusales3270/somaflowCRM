@@ -3,10 +3,11 @@
 /**
  * Prospecção B2B por CNPJ — a tela.
  *
- * Três passos: (1) a chave da CNPJá, (2) o perfil das empresas (descrição → CNAEs
- * sugeridos; estados e cidades; faturamento pelo porte da Receita) e (3) a lista,
- * com seleção e exportação em CSV. Não envia mensagem a ninguém: a lista sai por
- * exportação, e quem aborda decide como.
+ * Fontes (CNPJá, Treg, Jev), depois (1) o perfil das empresas (descrição → CNAEs
+ * sugeridos; estados e cidades; faturamento pelo porte da Receita) e (2) a lista:
+ * nota de aderência pelo Jev, decisores pelo Treg (`./Decisores.tsx`), seleção e
+ * exportação em CSV. Não envia mensagem a ninguém: a lista sai por exportação, e
+ * quem aborda decide como.
  *
  * O motor do Google Maps continua em `../_client.tsx`, intacto; o seletor de nível
  * mora em `../page.tsx`.
@@ -25,13 +26,20 @@ import { useT } from "@/hooks/i18n/useT";
 import { apiClient } from "@/lib/api/client";
 import { randomId } from "@/lib/random-id";
 import type { EmpresaB2b } from "@/lib/prospecting/b2b/schema";
+import { Decisores, type Rodada } from "./Decisores";
 
 const UFS = [
   "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA",
   "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
 ];
 
-type Credencial = { provider: "cnpja" | "treg"; configurada: boolean; last4: string | null; verificada_em: string | null };
+type Credencial = {
+  provider: "cnpja" | "treg";
+  configurada: boolean;
+  last4: string | null;
+  verificada_em: string | null;
+  preco_unidade_brl: number | null;
+};
 type Busca = {
   id: string;
   name: string;
@@ -43,8 +51,27 @@ type Busca = {
   error: string | null;
   created_at: string;
 };
-type Empresa = { id: string; cnpj: string; data: EmpresaB2b; selected: boolean; score_band: string | null };
-type Estado = { credenciais: Credencial[]; buscas: Busca[]; empresas: Empresa[] };
+type Faixa = "alta" | "media" | "baixa";
+type Empresa = { id: string; cnpj: string; data: EmpresaB2b; selected: boolean; score_band: Faixa | null };
+type Contato = {
+  id: string;
+  company_id: string;
+  nome: string;
+  cargo: string | null;
+  linkedin_url: string | null;
+  email: string | null;
+  email_status: string | null;
+  telefone: string | null;
+};
+type Estado = {
+  credenciais: Credencial[];
+  buscas: Busca[];
+  empresas: Empresa[];
+  rodadas: Rodada[];
+  contatos: Contato[];
+  jev_configurado: boolean;
+  cotacao_dolar: number | null;
+};
 type Cnae = { codigo: string; descricao: string; motivo?: string | null };
 type Cidade = { codigo: number; nome: string; uf: string };
 
@@ -71,9 +98,53 @@ export function ProspeccaoB2b() {
   });
   const recarregar = () => queryClient.invalidateQueries({ queryKey: ["prospecting-b2b"] });
 
-  // ── 1. chave ─────────────────────────────────────────────────────────────
+  // ── fontes ───────────────────────────────────────────────────────────────
   const cnpja = estado.data?.credenciais.find((c) => c.provider === "cnpja");
+  const treg = estado.data?.credenciais.find((c) => c.provider === "treg");
   const [chave, setChave] = useState("");
+  const [tokenTreg, setTokenTreg] = useState("");
+  const [estadoTreg, setEstadoTreg] = useState<string | null>(null);
+  const [salvandoTreg, setSalvandoTreg] = useState(false);
+  const [preco, setPreco] = useState<string | null>(null);
+  async function salvarTreg() {
+    setSalvandoTreg(true);
+    try {
+      const r = await apiClient.post<{ data: { detalhe: string } }>("/api/v1/prospecting/b2b", {
+        action: "configure_credential",
+        provider: "treg",
+        api_key: tokenTreg,
+      });
+      setEstadoTreg(r.data.detalhe);
+      setTokenTreg("");
+      await recarregar();
+    } catch (e) {
+      showApiError(e);
+    } finally {
+      setSalvandoTreg(false);
+    }
+  }
+  async function testarTreg() {
+    try {
+      const r = await apiClient.post<{ data: { detalhe: string } }>("/api/v1/prospecting/b2b", {
+        action: "test_credential",
+        provider: "treg",
+      });
+      setEstadoTreg(r.data.detalhe);
+    } catch (e) {
+      showApiError(e);
+    }
+  }
+  async function salvarPreco() {
+    const valor = preco === null || preco.trim() === "" ? null : Number(preco.replace(",", "."));
+    if (valor !== null && !Number.isFinite(valor)) return;
+    try {
+      await apiClient.post("/api/v1/prospecting/b2b", { action: "set_price", provider: "cnpja", preco_unidade_brl: valor });
+      setPreco(null);
+      await recarregar();
+    } catch (e) {
+      showApiError(e);
+    }
+  }
   const [saldo, setSaldo] = useState<string | null>(null);
   const [salvandoChave, setSalvandoChave] = useState(false);
   async function salvarChave() {
@@ -218,8 +289,56 @@ export function ProspeccaoB2b() {
 
   // ── 3. resultados ────────────────────────────────────────────────────────
   const busca = estado.data?.buscas.find((b) => b.id === buscaAtual) ?? null;
-  const empresas = useMemo(() => estado.data?.empresas ?? [], [estado.data]);
-  const selecionadas = empresas.filter((e) => e.selected).length;
+  const todas = useMemo(() => estado.data?.empresas ?? [], [estado.data]);
+  const [filtroNota, setFiltroNota] = useState<"todas" | Faixa | "sem">("todas");
+  const empresas = useMemo(
+    () =>
+      todas.filter((e) =>
+        filtroNota === "todas" ? true : filtroNota === "sem" ? e.score_band === null : e.score_band === filtroNota,
+      ),
+    [todas, filtroNota],
+  );
+  const selecionadas = todas.filter((e) => e.selected).length;
+  const contatosPorEmpresa = useMemo(() => {
+    const m = new Map<string, Contato[]>();
+    for (const c of estado.data?.contatos ?? []) m.set(c.company_id, [...(m.get(c.company_id) ?? []), c]);
+    return m;
+  }, [estado.data]);
+  const semNota = todas.filter((e) => e.score_band === null).length;
+  const [qualificando, setQualificando] = useState(false);
+  async function qualificar() {
+    if (!busca) return;
+    setQualificando(true);
+    try {
+      // 50 por pedido; repete enquanto houver empresa sem nota.
+      for (let i = 0; i < 40; i += 1) {
+        const r = await apiClient.post<{ data: { avaliadas: number; faltam: number } }>("/api/v1/prospecting/b2b", {
+          action: "qualify",
+          id: busca.id,
+        });
+        await recarregar();
+        if (r.data.faltam === 0 || r.data.avaliadas === 0) break;
+      }
+    } catch (e) {
+      showApiError(e);
+    } finally {
+      setQualificando(false);
+    }
+  }
+  async function removerContato(id: string) {
+    try {
+      await apiClient.post("/api/v1/prospecting/b2b", { action: "contact_remove", contact_id: id });
+      await recarregar();
+    } catch (e) {
+      showApiError(e);
+    }
+  }
+  const ROTULO_DA_FAIXA: Record<Faixa, string> = { alta: t("Alta"), media: t("Média"), baixa: t("Baixa") };
+  const COR_DA_FAIXA: Record<Faixa, string> = {
+    alta: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200",
+    media: "bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200",
+    baixa: "bg-muted text-muted-foreground",
+  };
   async function selecionar(ids: string[], selected: boolean) {
     if (!busca || !ids.length) return;
     // Otimista: a caixa muda no clique. Se o servidor recusar, a lista volta ao
@@ -256,14 +375,16 @@ export function ProspeccaoB2b() {
 
   return (
     <div className="flex flex-col gap-6" data-testid="prospeccao-b2b">
-      <Card className="p-4">
-        <h2 className="text-base font-semibold tracking-tight">{t("Fonte: CNPJá")}</h2>
+      <Card className="p-4" data-testid="b2b-fontes">
+        <h2 className="text-base font-semibold tracking-tight">{t("Fontes")}</h2>
+
+        <h3 className="mt-3 text-sm font-semibold">{t("CNPJá — as empresas")}</h3>
         <p className="mt-0.5 text-sm text-muted-foreground">
           {t(
             "A busca usa a base de CNPJs da Receita pela CNPJá. Cada 10 empresas encontradas custam 1 crédito da sua conta lá.",
           )}
         </p>
-        <div className="mt-3 flex flex-wrap items-end gap-2">
+        <div className="mt-2 flex flex-wrap items-end gap-2">
           <div className="flex min-w-[16rem] flex-1 flex-col gap-1.5">
             <Label htmlFor="b2b-chave">
               {t("Chave da API")}{" "}
@@ -295,6 +416,79 @@ export function ProspeccaoB2b() {
             {saldo}
           </p>
         ) : null}
+        {cnpja?.configurada ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <Label htmlFor="b2b-preco">{t("Valor de cada crédito (R$), para o custo em Uso e orçamento")}</Label>
+            <Input
+              id="b2b-preco"
+              inputMode="decimal"
+              className="w-28"
+              value={preco ?? (cnpja.preco_unidade_brl ?? 39.99 / 2500).toLocaleString("pt-BR", { maximumFractionDigits: 4 })}
+              onChange={(e) => setPreco(e.target.value.replace(/[^\d.,]/g, ""))}
+            />
+            {preco !== null ? (
+              <Button variant="outline" size="sm" onClick={salvarPreco}>
+                {t("Salvar valor")}
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">
+                {cnpja.preco_unidade_brl === null ? t("padrão: plano de R$ 39,99 com 2.500 créditos; no plano grátis, use 0") : null}
+              </span>
+            )}
+          </div>
+        ) : null}
+
+        <h3 className="mt-5 text-sm font-semibold">{t("Treg — os decisores")}</h3>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          {t("Acha quem decide nas empresas escolhidas. Pré-pago: cada consulta sai do saldo da sua conta no Treg.")}
+        </p>
+        <div className="mt-2 flex flex-wrap items-end gap-2">
+          <div className="flex min-w-[16rem] flex-1 flex-col gap-1.5">
+            <Label htmlFor="b2b-treg">
+              {t("Token da API")}{" "}
+              {treg?.configurada ? (
+                <span className="text-muted-foreground">
+                  ({t("configurado, termina em")} {treg.last4})
+                </span>
+              ) : null}
+            </Label>
+            <Input
+              id="b2b-treg"
+              type="password"
+              value={tokenTreg}
+              placeholder={treg?.configurada ? t("Deixe em branco para manter o atual") : ""}
+              onChange={(e) => setTokenTreg(e.target.value)}
+            />
+          </div>
+          <Button onClick={salvarTreg} disabled={salvandoTreg || tokenTreg.trim().length < 8}>
+            {salvandoTreg ? t("Salvando...") : t("Salvar token")}
+          </Button>
+          {treg?.configurada ? (
+            <Button variant="outline" onClick={() => void testarTreg()}>
+              {t("Testar token")}
+            </Button>
+          ) : null}
+        </div>
+        {estadoTreg ? (
+          <p className="mt-2 text-sm text-muted-foreground" role="status" data-testid="b2b-treg-estado">
+            {estadoTreg}
+          </p>
+        ) : null}
+
+        <h3 className="mt-5 text-sm font-semibold">{t("Jev — a nota de aderência")}</h3>
+        <p className="mt-0.5 text-sm text-muted-foreground" data-testid="b2b-jev-estado">
+          {estado.data?.jev_configurado ? (
+            t("Chave do Jev cadastrada: o botão “Dar nota com o Jev” aparece na lista.")
+          ) : (
+            <>
+              {t("Para dar nota às empresas, cadastre a chave do Jev em")}{" "}
+              <a className="underline" href="/app/ai/providers">
+                {t("IA › Provedores")}
+              </a>
+              .
+            </>
+          )}
+        </p>
       </Card>
 
       <Card className="p-4">
@@ -573,6 +767,23 @@ export function ProspeccaoB2b() {
                   {t("Carregar mais")}
                 </Button>
               ) : null}
+              {estado.data?.jev_configurado ? (
+                <Button variant="outline" size="sm" onClick={qualificar} disabled={qualificando || semNota === 0}>
+                  {qualificando ? t("Dando nota...") : semNota ? `${t("Dar nota com o Jev")} (${semNota})` : t("Todas com nota")}
+                </Button>
+              ) : null}
+              <select
+                aria-label={t("Filtrar por nota")}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+                value={filtroNota}
+                onChange={(e) => setFiltroNota(e.target.value as typeof filtroNota)}
+              >
+                <option value="todas">{t("Todas as notas")}</option>
+                <option value="alta">{t("Nota alta")}</option>
+                <option value="media">{t("Nota média")}</option>
+                <option value="baixa">{t("Nota baixa")}</option>
+                <option value="sem">{t("Sem nota")}</option>
+              </select>
               <a
                 className="inline-flex h-11 items-center rounded-xl bg-accent px-4 text-sm font-medium text-accent-foreground hover:bg-accent-hover lg:h-9"
                 href={`/api/v1/prospecting/b2b/exportar?search=${busca.id}`}
@@ -581,6 +792,19 @@ export function ProspeccaoB2b() {
                 {t("Exportar CSV")} ({selecionadas})
               </a>
             </div>
+            {filtroNota !== "todas" ? (
+              <p className="text-xs text-muted-foreground">
+                {t("Mostrando")} {empresas.length} {t("de")} {todas.length}. {t("Marcar e desmarcar todas valem só para as mostradas.")}
+              </p>
+            ) : null}
+            <Decisores
+              buscaId={busca.id}
+              marcadas={selecionadas}
+              rodadas={estado.data?.rodadas ?? []}
+              tregConfigurado={!!treg?.configurada}
+              cotacao={estado.data?.cotacao_dolar ?? null}
+              aoMudar={recarregar}
+            />
             <div className="overflow-x-auto">
               <table className="w-full min-w-[56rem] text-left text-sm" data-testid="b2b-tabela">
                 <thead className="text-xs text-muted-foreground">
@@ -591,11 +815,13 @@ export function ProspeccaoB2b() {
                     <th className="py-2 pr-3 font-medium">{t("Porte")}</th>
                     <th className="py-2 pr-3 text-right font-medium">{t("Capital social")}</th>
                     <th className="py-2 pr-3 font-medium">{t("Cidade")}</th>
-                    <th className="py-2 font-medium">{t("Contato")}</th>
+                    <th className="py-2 pr-3 font-medium">{t("Nota")}</th>
+                    <th className="py-2 pr-3 font-medium">{t("Contato da empresa")}</th>
+                    <th className="py-2 font-medium">{t("Decisores")}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {empresas.map(({ id, data: e, selected }) => (
+                  {empresas.map(({ id, data: e, selected, score_band }) => (
                     <tr key={id} className="border-b align-top last:border-0">
                       <td className="py-2 pr-2">
                         <input
@@ -613,11 +839,20 @@ export function ProspeccaoB2b() {
                           {formatarCnpj(e.cnpj)}
                         </span>
                       </td>
-                      <td className="py-2 pr-3 text-xs">{e.cnae_principal_descricao ?? e.cnae_principal ?? "—"}</td>
+                      <td className="max-w-[11rem] py-2 pr-3 text-xs">{e.cnae_principal_descricao ?? e.cnae_principal ?? "—"}</td>
                       <td className="py-2 pr-3 text-xs">{e.porte ?? "—"}</td>
                       <td className="py-2 pr-3 text-right tabular-nums">{formatarReais(e.capital_social)}</td>
                       <td className="py-2 pr-3 text-xs">{e.cidade ? `${e.cidade}/${e.uf ?? ""}` : "—"}</td>
-                      <td className="py-2 text-xs">
+                      <td className="py-2 pr-3 text-xs">
+                        {score_band ? (
+                          <span className={`rounded-md px-1.5 py-0.5 font-medium ${COR_DA_FAIXA[score_band]}`}>
+                            {ROTULO_DA_FAIXA[score_band]}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="max-w-[12rem] break-words py-2 pr-3 text-xs">
                         {e.telefones.slice(0, 2).map((tel) => (
                           <span key={tel.numero} className="block tabular-nums">
                             {formatarTelefone(tel.numero)}
@@ -629,6 +864,40 @@ export function ProspeccaoB2b() {
                           </span>
                         ))}
                         {!e.telefones.length && !e.emails.length ? "—" : null}
+                      </td>
+                      <td className="min-w-[13rem] py-2 text-xs" data-testid="b2b-decisores-da-empresa">
+                        {(contatosPorEmpresa.get(id) ?? []).map((c) => (
+                          <div key={c.id} className="mb-1.5 last:mb-0">
+                            <span className="font-medium">{c.nome}</span>
+                            {c.cargo ? <span className="text-muted-foreground"> · {c.cargo}</span> : null}
+                            <button
+                              type="button"
+                              className="ml-1 text-muted-foreground hover:text-destructive"
+                              aria-label={`${t("Remover e não buscar de novo")}: ${c.nome}`}
+                              title={t("Remover e não buscar de novo")}
+                              onClick={() => void removerContato(c.id)}
+                            >
+                              ×
+                            </button>
+                            {c.email ? (
+                              <span className="block">
+                                {c.email}
+                                {c.email_status === "valid" ? (
+                                  <span className="ml-1 text-emerald-700 dark:text-emerald-400">{t("(verificado)")}</span>
+                                ) : c.email_status && c.email_status !== "unknown" ? (
+                                  <span className="ml-1 text-amber-700 dark:text-amber-400">({c.email_status === "invalid" ? t("inválido") : t("incerto")})</span>
+                                ) : null}
+                              </span>
+                            ) : null}
+                            {c.telefone ? <span className="block tabular-nums">{c.telefone}</span> : null}
+                            {c.linkedin_url ? (
+                              <a className="block underline" href={c.linkedin_url} target="_blank" rel="noreferrer noopener">
+                                LinkedIn
+                              </a>
+                            ) : null}
+                          </div>
+                        ))}
+                        {!contatosPorEmpresa.get(id)?.length ? "—" : null}
                       </td>
                     </tr>
                   ))}

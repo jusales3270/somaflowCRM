@@ -11,7 +11,9 @@ import type pg from "pg";
 
 import { cnaePorCodigo, municipioPorCodigo } from "./catalogos";
 import { buscarPagina, creditosEstimados, ErroDaCnpja, POR_PAGINA } from "./cnpja";
-import { lerCredencial } from "./credenciais";
+import { lerCredencial, precoDaUnidade } from "./credenciais";
+import { centavosDosCreditos, registrarCusto } from "./custos";
+import { listarContatos } from "./decisores";
 import type { EmpresaB2b, FiltrosB2b } from "./schema";
 
 export class ErroDaBuscaB2b extends Error {
@@ -86,6 +88,7 @@ async function lerPaginas(
   busca: LinhaDaBusca,
 ): Promise<LinhaDaBusca> {
   const chave = await lerCredencial(db, admin, org, "cnpja");
+  const preco = await precoDaUnidade(db, org, "cnpja");
   let token = busca.next_token;
   let gravadas = busca.results_count;
   let creditos = busca.credits_used;
@@ -100,7 +103,16 @@ async function lerPaginas(
         chave,
         token ? { token } : { filtros: busca.filtros, limite: Math.min(POR_PAGINA, falta) },
       );
-      creditos += Math.ceil(pagina.recebidos / 10);
+      const daPagina = Math.ceil(pagina.recebidos / 10);
+      creditos += daPagina;
+      if (daPagina > 0)
+        await registrarCusto(db, org, {
+          provider: "cnpja",
+          operacao: busca.next_token ? "carregar_mais" : "busca",
+          unidades: daPagina,
+          custoBrlCents: centavosDosCreditos(daPagina, preco),
+          referenciaId: busca.id,
+        });
       total = pagina.total ?? total;
       gravadas += await gravarEmpresas(db, org, busca.id, pagina.empresas.slice(0, falta));
       token = pagina.proximo;
@@ -206,28 +218,68 @@ function celula(valor: unknown): string {
   return /[";\n\r]/.test(seguro) ? `"${seguro.replace(/"/g, '""')}"` : seguro;
 }
 
-/** CSV com `;` (abre direto no Excel em português) e BOM UTF-8. Só as selecionadas. */
+const FAIXA_LEGIVEL: Record<string, string> = { alta: "alta", media: "média", baixa: "baixa" };
+const STATUS_DO_EMAIL: Record<string, string> = {
+  valid: "verificado",
+  invalid: "inválido",
+  catch_all: "domínio aceita tudo",
+  risky: "arriscado",
+  unknown: "não verificado",
+};
+
+/**
+ * CSV com `;` (abre direto no Excel em português) e BOM UTF-8. Só as selecionadas.
+ * Uma linha por DECISOR (a empresa se repete); empresa sem decisor sai numa linha
+ * com as colunas do decisor vazias.
+ */
 export async function exportarCsv(
   db: pg.Pool | pg.PoolClient,
   org: string,
   searchId: string,
-): Promise<{ csv: string; linhas: number }> {
+): Promise<{ csv: string; linhas: number; empresas: number; decisores: number }> {
   const empresas = (await listarEmpresas(db, org, searchId)).filter((e) => e.selected);
+  const contatos = await listarContatos(db, org, searchId);
+  const porEmpresa = new Map<string, typeof contatos>();
+  for (const c of contatos) porEmpresa.set(c.company_id, [...(porEmpresa.get(c.company_id) ?? []), c]);
   const cabecalho = [
     "CNPJ", "Razão social", "Nome fantasia", "CNAE principal", "Atividade", "Porte", "Capital social",
     "Optante do Simples", "Natureza jurídica", "Cidade", "UF", "Aberta em", "Situação",
-    "Telefones", "E-mails", "Domínio", "Nota do perfil",
+    "Telefones", "E-mails", "Domínio", "Nota do perfil (Jev)",
+    "Decisor", "Cargo", "E-mail do decisor", "E-mail verificado?", "Celular do decisor", "LinkedIn",
   ];
-  const linhas = empresas.map(({ data: e, score_band }) =>
-    [
+  const linhas: string[] = [];
+  let decisores = 0;
+  for (const { id, data: e, score_band } of empresas) {
+    const daEmpresa = [
       e.cnpj, e.razao_social, e.nome_fantasia, e.cnae_principal, e.cnae_principal_descricao, e.porte,
       e.capital_social, e.simples_optante === null ? "" : e.simples_optante ? "sim" : "não",
       e.natureza_juridica, e.cidade, e.uf, e.aberta_em, e.situacao,
       e.telefones.map((t) => `${t.numero} (${t.tipo})`).join(", "), e.emails.join(", "), e.dominio,
-      score_band ?? "",
-    ]
-      .map(celula)
-      .join(";"),
-  );
-  return { csv: `﻿${[cabecalho.join(";"), ...linhas].join("\r\n")}\r\n`, linhas: empresas.length };
+      score_band ? (FAIXA_LEGIVEL[score_band] ?? score_band) : "",
+    ];
+    const deles = porEmpresa.get(id) ?? [];
+    if (!deles.length) linhas.push([...daEmpresa, "", "", "", "", "", ""].map(celula).join(";"));
+    for (const c of deles) {
+      decisores += 1;
+      linhas.push(
+        [
+          ...daEmpresa,
+          c.nome,
+          c.cargo,
+          c.email,
+          c.email_status ? (STATUS_DO_EMAIL[c.email_status] ?? c.email_status) : "",
+          c.telefone,
+          c.linkedin_url,
+        ]
+          .map(celula)
+          .join(";"),
+      );
+    }
+  }
+  return {
+    csv: `\ufeff${[cabecalho.join(";"), ...linhas].join("\r\n")}\r\n`,
+    linhas: linhas.length,
+    empresas: empresas.length,
+    decisores,
+  };
 }

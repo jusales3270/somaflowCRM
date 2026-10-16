@@ -14,6 +14,9 @@ export const PORTE_PADRAO = [PORTES.DEMAIS];
 /** Teto por busca: cada 10 empresas custam 1 crédito na CNPJá. */
 export const MAXIMO_POR_BUSCA = 1000;
 
+/** Teto de gasto de UMA busca de decisores no Treg (US$). */
+export const MAXIMO_DE_GASTO_USD = 200;
+
 export const filtrosB2bSchema = z
   .object({
     /** O que a pessoa descreveu — guardado para a qualificação (perfil ideal). */
@@ -66,6 +69,28 @@ export const b2bInputSchema = z.discriminatedUnion("action", [
     selected: z.boolean(),
     company_ids: z.array(z.string().uuid()).min(1).max(1000),
   }),
+  /** R$ por crédito da CNPJá (o plano de quem assina); `null` volta ao padrão. */
+  z.object({
+    action: z.literal("set_price"),
+    provider: z.literal("cnpja"),
+    preco_unidade_brl: z.number().min(0).max(10).nullable(),
+  }),
+  /** Nota de aderência pelo Jev para as empresas ainda sem nota da busca. */
+  z.object({ action: z.literal("qualify"), id: z.string().uuid() }),
+  /** Decisores pelo Treg, nas empresas MARCADAS da busca, com teto de gasto. */
+  z.object({
+    action: z.literal("enrich_start"),
+    request_id: z.string().uuid(),
+    search_id: z.string().uuid(),
+    cargos: z.array(z.string().trim().min(2).max(60)).min(1).max(5),
+    por_empresa: z.number().int().min(1).max(3).default(1),
+    com_celular: z.boolean().default(false),
+    teto_usd: z.number().min(0.1).max(MAXIMO_DE_GASTO_USD),
+  }),
+  z.object({ action: z.literal("enrich_step"), run_id: z.string().uuid() }),
+  z.object({ action: z.literal("enrich_cancel"), run_id: z.string().uuid() }),
+  /** Remove o decisor e não o busca de novo (supressão). */
+  z.object({ action: z.literal("contact_remove"), contact_id: z.string().uuid() }),
 ]);
 
 export type B2bInput = z.infer<typeof b2bInputSchema>;

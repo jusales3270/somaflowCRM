@@ -4,8 +4,10 @@
  * motor do Google Maps (`/api/v1/prospecting`, que não muda).
  *
  * GET  → chaves configuradas, buscas recentes e, com `?search=<id>`, as empresas.
- * POST → `configure_credential`, `test_credential`, `suggest_cnae`, `search`,
- *        `load_more`, `select`.
+ * POST → `configure_credential`, `test_credential`, `set_price`, `suggest_cnae`,
+ *        `search`, `load_more`, `select`, `qualify` (nota do Jev),
+ *        `enrich_start` / `enrich_step` / `enrich_cancel` (decisores pelo Treg),
+ *        `contact_remove` (remove o decisor e não o busca de novo).
  *
  * Só admin, por sessão ou bearer (`resolveAuthDual`). A lista B2B não envia nada a
  * ninguém: sai por exportação (`./exportar`). Toda mutação audita
@@ -24,6 +26,7 @@ import { requireSupportWrite } from "@/lib/impersonate/support";
 import { logger } from "@/lib/logger";
 import { ErroDaCnpja } from "@/lib/prospecting/b2b/cnpja";
 import {
+  definirPrecoDaUnidade,
   ErroDeCredencial,
   estadoDasCredenciais,
   lerCredencial,
@@ -31,6 +34,16 @@ import {
   salvarCredencial,
   testarChave,
 } from "@/lib/prospecting/b2b/credenciais";
+import {
+  cancelarRodada,
+  ErroDosDecisores,
+  iniciarRodada,
+  listarContatos,
+  listarRodadas,
+  processarRodada,
+  removerContato,
+} from "@/lib/prospecting/b2b/decisores";
+import { ErroDaQualificacao, jevConfigurado, qualificarBusca } from "@/lib/prospecting/b2b/qualificar";
 import { b2bInputSchema } from "@/lib/prospecting/b2b/schema";
 import {
   carregarMais,
@@ -41,17 +54,32 @@ import {
   selecionar,
 } from "@/lib/prospecting/b2b/store";
 import { sugerirCnaes } from "@/lib/prospecting/b2b/sugerir-cnae";
+import { ErroDoTreg } from "@/lib/prospecting/b2b/treg";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 const headers = { "Cache-Control": "no-store" };
 
-/** Tetos por organização, por hora: a busca gasta crédito; a sugestão gasta IA. */
-const TETOS = { search: 30, load_more: 60, suggest_cnae: 30 } as const;
+/**
+ * Tetos por organização, por hora: a busca gasta crédito; a sugestão e a nota
+ * gastam IA; a rodada de decisores gasta Treg (o passo é o laço da tela, que
+ * avança a rodada a cada poucos segundos).
+ */
+const TETOS = { search: 30, load_more: 60, suggest_cnae: 30, qualify: 60, enrich_start: 20, enrich_step: 1200 } as const;
+
+/** Quanto um passo de decisores roda dentro do pedido HTTP. */
+const PRAZO_DO_PASSO_MS = 20_000;
 
 function falha(e: unknown, requestId: string) {
-  if (e instanceof ErroDaCnpja || e instanceof ErroDeCredencial || e instanceof ErroDaBuscaB2b)
+  if (
+    e instanceof ErroDaCnpja ||
+    e instanceof ErroDeCredencial ||
+    e instanceof ErroDaBuscaB2b ||
+    e instanceof ErroDoTreg ||
+    e instanceof ErroDosDecisores ||
+    e instanceof ErroDaQualificacao
+  )
     return fail("prospecting_b2b_unavailable", e.message, e.status, { requestId, headers });
   logger.error("[prospeccao-b2b] erro inesperado", {
     request_id: requestId,
@@ -78,12 +106,23 @@ export async function GET(req: NextRequest) {
     const db = getRequestPool();
     const org = auth.organizationId;
     const searchId = req.nextUrl.searchParams.get("search");
-    const [credenciais, buscas, empresas] = await Promise.all([
+    const daBusca = !!searchId && /^[0-9a-f-]{36}$/i.test(searchId);
+    const [credenciais, buscas, empresas, rodadas, contatos, jev, cotacao] = await Promise.all([
       estadoDasCredenciais(db, org),
       listarBuscas(db, org),
-      searchId && /^[0-9a-f-]{36}$/i.test(searchId) ? listarEmpresas(db, org, searchId) : Promise.resolve([]),
+      daBusca ? listarEmpresas(db, org, searchId!) : Promise.resolve([]),
+      daBusca ? listarRodadas(db, org, searchId!) : Promise.resolve([]),
+      daBusca ? listarContatos(db, org, searchId!) : Promise.resolve([]),
+      jevConfigurado(db, org),
+      // A PTAX mais recente (tabela global, 9001): a tela mostra o teto do Treg também em R$.
+      db.query<{ venda: string }>("select venda from cotacoes_do_dolar order by data desc limit 1").then(
+        (r) => (r.rows[0] ? Number(r.rows[0].venda) : null),
+      ),
     ]);
-    return ok({ credenciais, buscas, empresas }, { requestId, headers });
+    return ok(
+      { credenciais, buscas, empresas, rodadas, contatos, jev_configurado: jev, cotacao_dolar: cotacao },
+      { requestId, headers },
+    );
   } catch (e) {
     return falha(e, requestId);
   }
@@ -137,8 +176,12 @@ export async function POST(req: NextRequest) {
     } else if (body.action === "test_credential") {
       const chave = await lerCredencial(pool, admin, org, body.provider);
       resultado = await testarChave(body.provider, chave);
-      if (body.provider === "cnpja") await marcarVerificada(pool, org, body.provider);
+      await marcarVerificada(pool, org, body.provider);
       audita = false;
+    } else if (body.action === "set_price") {
+      await definirPrecoDaUnidade(pool, org, body.provider, body.preco_unidade_brl);
+      resultado = { preco_unidade_brl: body.preco_unidade_brl };
+      metadata = { operation: body.action, provider: body.provider, preco_unidade_brl: body.preco_unidade_brl };
     } else if (body.action === "suggest_cnae") {
       resultado = await sugerirCnaes(pool, org, body.descricao, await provedorOferecido(admin));
       audita = false;
@@ -160,6 +203,48 @@ export async function POST(req: NextRequest) {
       const busca = await carregarMais(pool, admin, org, body.id);
       resultado = { busca };
       metadata = { operation: body.action, search_id: body.id, empresas: busca.results_count, creditos: busca.credits_used };
+    } else if (body.action === "qualify") {
+      const r = await qualificarBusca(pool, org, body.id);
+      resultado = r;
+      metadata = { operation: body.action, search_id: body.id, ...r };
+    } else if (body.action === "enrich_start") {
+      const r = await iniciarRodada(pool, admin, org, userId, body);
+      resultado = r;
+      metadata = {
+        operation: body.action,
+        search_id: body.search_id,
+        run_id: r.rodada.id,
+        cargos: body.cargos,
+        por_empresa: body.por_empresa,
+        com_celular: body.com_celular,
+        teto_usd: body.teto_usd,
+        empresas: r.rodada.empresas_total,
+        repetida: r.repetida,
+      };
+    } else if (body.action === "enrich_step") {
+      const antes = Date.now();
+      const rodada = await processarRodada(pool, admin, org, body.run_id, PRAZO_DO_PASSO_MS);
+      resultado = { rodada };
+      // O passo é o laço da tela: audita só quando terminou a rodada (o efeito
+      // que importa); o gasto de cada chamada está no livro de custo.
+      audita = rodada.status !== "running";
+      metadata = {
+        operation: "enrich_finished",
+        run_id: body.run_id,
+        status: rodada.status,
+        empresas: rodada.empresas_feitas,
+        contatos: rodada.contatos_achados,
+        gasto_usd: rodada.gasto_micro / 1_000_000,
+        ms: Date.now() - antes,
+      };
+    } else if (body.action === "enrich_cancel") {
+      const rodada = await cancelarRodada(pool, org, body.run_id);
+      resultado = { rodada };
+      metadata = { operation: body.action, run_id: body.run_id };
+    } else if (body.action === "contact_remove") {
+      await removerContato(pool, org, body.contact_id);
+      resultado = { removido: true };
+      metadata = { operation: body.action, contact_id: body.contact_id, suprimido: true };
     } else {
       const alteradas = await selecionar(pool, org, body.id, body.selected, body.company_ids);
       resultado = { alteradas };

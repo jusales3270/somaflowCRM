@@ -11071,6 +11071,14 @@ export type Database = {
         }
         Returns: Json
       }
+      fn_custo_dos_provedores: {
+        Args: {
+          p_ate: string
+          p_desde: string
+          p_org: string
+        }
+        Returns: Json
+      }
       fn_uso_de_ia: {
         Args: {
           p_agent_id?: string

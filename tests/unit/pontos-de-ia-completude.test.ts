@@ -27,6 +27,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import {
+  ADERENCIA_B2B,
   CONFERENCIA_DE_CAMPO,
   PEDIDOS_DO_CLIENTE,
   rotuloDaChamadaDoJev,
@@ -138,6 +139,9 @@ const CHAMADAS_DO_JEV_SEM_PONTO: ReadonlySet<string> = new Set([
   // O sinal de urgência da mensagem represada (#2232): a pergunta é do turno,
   // e quem decide se ela vale é a regra léxica, sem modelo nenhum.
   SINAL_DE_URGENCIA.purpose,
+  // A nota das empresas da prospecção B2B: quem pede é o botão da lista, não
+  // um ponto de escolha de modelo.
+  ADERENCIA_B2B.purpose,
 ]);
 
 describe("registro de pontos de IA × código", () => {
