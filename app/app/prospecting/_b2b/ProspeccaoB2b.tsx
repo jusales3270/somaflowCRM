@@ -93,7 +93,7 @@ export function ProspeccaoB2b() {
       setSalvandoChave(false);
     }
   }
-  async function testarChave() {
+  async function testarChave({ calado = false }: { calado?: boolean } = {}) {
     try {
       const r = await apiClient.post<{ data: { detalhe: string } }>("/api/v1/prospecting/b2b", {
         action: "test_credential",
@@ -101,7 +101,9 @@ export function ProspeccaoB2b() {
       });
       setSaldo(r.data.detalhe);
     } catch (e) {
-      showApiError(e);
+      // Depois de uma busca, o saldo é só informação: se a consulta falhar, a
+      // busca já deu certo e não há o que avisar.
+      if (!calado) showApiError(e);
     }
   }
 
@@ -206,6 +208,7 @@ export function ProspeccaoB2b() {
       });
       setBuscaAtual(r.data.busca.id);
       await recarregar();
+      void testarChave({ calado: true });
     } catch (e) {
       showApiError(e);
     } finally {
@@ -240,6 +243,8 @@ export function ProspeccaoB2b() {
     try {
       await apiClient.post("/api/v1/prospecting/b2b", { action: "load_more", id: busca.id });
       await recarregar();
+      // A busca gastou créditos: o saldo mostrado acima não pode ficar no de antes.
+      void testarChave({ calado: true });
     } catch (e) {
       showApiError(e);
     } finally {
@@ -280,7 +285,7 @@ export function ProspeccaoB2b() {
             {salvandoChave ? t("Salvando...") : t("Salvar")}
           </Button>
           {cnpja?.configurada ? (
-            <Button variant="outline" onClick={testarChave}>
+            <Button variant="outline" onClick={() => void testarChave()}>
               {t("Testar")}
             </Button>
           ) : null}

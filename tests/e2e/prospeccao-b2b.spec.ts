@@ -101,6 +101,9 @@ test.describe("prospecção B2B por CNPJ", () => {
     const tabela = page.getByTestId("b2b-tabela");
     await expect(tabela.locator("tbody tr")).toHaveCount(10, { timeout: 30_000 });
     await expect(page.getByTestId("b2b-resumo")).toContainText("10 empresas de 25 disponíveis");
+    // A busca gastou 1 crédito: o saldo mostrado no topo acompanha (achado no teste
+    // real de 16/10/2026 — a tela seguia mostrando o saldo de antes da busca).
+    await expect(page.getByTestId("b2b-saldo")).toHaveText("499 créditos disponíveis");
     const busca = chamadas().find((c) => c.caminho === "/office" && !c.params.token);
     expect(busca?.autorizada, "a busca saiu sem a chave salva").toBe(true);
     expect(busca?.params).toMatchObject({
@@ -115,6 +118,7 @@ test.describe("prospecção B2B por CNPJ", () => {
     // 6. Carregar mais, pelo token (a busca encheu o teto e guardou a página seguinte).
     await b2b.getByRole("button", { name: "Carregar mais" }).click();
     await expect(tabela.locator("tbody tr")).toHaveCount(20, { timeout: 30_000 });
+    await expect(page.getByTestId("b2b-saldo")).toHaveText("498 créditos disponíveis");
     expect(chamadas().some((c) => c.caminho === "/office" && !!c.params.token)).toBe(true);
 
     // 7. Desmarca uma e exporta.

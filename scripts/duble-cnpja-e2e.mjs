@@ -69,6 +69,10 @@ function empresa(n, municipio, estado, cidade, atividade) {
   };
 }
 
+// Saldo que DESCONTA, como a conta real: 1 crédito a cada 10 empresas entregues.
+// Sem isso, a tela poderia mostrar o saldo de antes da busca e o teste não veria.
+let saldo = 500;
+
 const servidor = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", `http://127.0.0.1:${PORTA}`);
   const responder = (status, corpo) => {
@@ -79,7 +83,7 @@ const servidor = http.createServer((req, res) => {
   const autorizada = req.headers.authorization === CHAVE;
   gravar(url.pathname, Object.fromEntries(url.searchParams), autorizada);
   if (!autorizada) return responder(401, { code: 401, message: "Unauthorized" });
-  if (url.pathname === "/credit") return responder(200, { perpetual: 500, transient: 0 });
+  if (url.pathname === "/credit") return responder(200, { perpetual: saldo, transient: 0 });
   if (url.pathname === "/office") {
     // O token carrega a consulta da primeira página e onde ela parou, como na
     // API real ("token é exclusivo": a página seguinte vem só com ele).
@@ -95,6 +99,7 @@ const servidor = http.createServer((req, res) => {
     const records = [];
     for (let n = consulta.inicio + 1; n <= fim; n += 1)
       records.push(empresa(n, consulta.municipio, consulta.estado, "Campinas", consulta.atividade));
+    saldo -= Math.ceil(records.length / 10);
     const next = fim < TOTAL ? Buffer.from(JSON.stringify({ ...consulta, inicio: fim })).toString("base64url") : null;
     return responder(200, { next, limit: consulta.tamanho, count: TOTAL, records });
   }
