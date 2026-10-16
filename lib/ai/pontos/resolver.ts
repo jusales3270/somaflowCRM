@@ -230,6 +230,9 @@ export const PONTOS_QUE_HERDAM_DO_AGENTE: ReadonlySet<string> = new Set([
   "draft_suggestion",
   "automation_ai_message",
   "prospecting_agent_setup_chat",
+  // A sugestão de CNAE da prospecção B2B usa o MESMO resolvedor da montagem de
+  // agente da prospecção (`resolveSetupModel` + `llmOverride`): herda do agente.
+  "prospecting_b2b_cnae_suggest",
   // migration 0281 — a consulta interna da equipe sobre um caso herda do agente
   // que ABRIU aquele caso (`lib/agent-engine/agent/conversa-do-caso.ts` passa
   // `model` e `llmOverride` no mesmo objeto). NUNCA em

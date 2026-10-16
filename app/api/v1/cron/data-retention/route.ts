@@ -141,6 +141,13 @@ export interface ResultadoDaRetencao {
   prospeccao_apagada: number;
   lotes_prospeccao: number;
   prospeccao_tem_resto: boolean;
+  /** A busca B2B por CNPJ vencida, com as empresas dela (migration 9002), no prazo da prospecção. */
+  prospeccao_b2b_apagada: number;
+  decisores_b2b_apagados: number;
+  lotes_prospeccao_b2b: number;
+  lotes_decisores_b2b: number;
+  prospeccao_b2b_tem_resto: boolean;
+  decisores_b2b_tem_resto: boolean;
   /** A observação do Jev vencida — rótulos, sem texto de cliente (migration 0421). */
   observacoes_do_jev_apagadas: number;
   lotes_observacoes_do_jev: number;
@@ -229,6 +236,8 @@ export interface PodaDb {
       | "fn_expurgar_passagens_vencidas"
       | "fn_expurgar_avisos_de_caso_vencidos"
       | "fn_expurgar_prospeccao_vencida"
+      | "fn_expurgar_prospeccao_b2b_vencida"
+      | "fn_expurgar_contatos_b2b_vencidos"
       | "fn_expurgar_observacoes_do_jev"
       | "fn_expurgar_candidatos_do_golden"
       | "fn_expurgar_telemetria_de_ia_vencida"
@@ -296,6 +305,8 @@ async function drenar(
     | "fn_expurgar_passagens_vencidas"
     | "fn_expurgar_avisos_de_caso_vencidos"
     | "fn_expurgar_prospeccao_vencida"
+    | "fn_expurgar_prospeccao_b2b_vencida"
+    | "fn_expurgar_contatos_b2b_vencidos"
     | "fn_expurgar_observacoes_do_jev"
     | "fn_expurgar_candidatos_do_golden"
     | "fn_expurgar_telemetria_de_ia_vencida"
@@ -604,6 +615,13 @@ export async function podarHistorico(
   // reimportação. É a primeira poda da casa cujo dado é de uma pessoa que
   // NUNCA falou com a empresa, então as duas guardas são a regra, não enfeite.
   const prospeccaoDrenada = await executarDreno(falhas, "fn_expurgar_prospeccao_vencida", () => drenar(db, "fn_expurgar_prospeccao_vencida", prospeccao.dias), zerado);
+  // A busca B2B por CNPJ (9002) segue o MESMO prazo da prospecção — é a mesma
+  // finalidade (achar quem abordar); o piso de 90 mora no corpo da função.
+  const prospeccaoB2bDrenada = await executarDreno(falhas, "fn_expurgar_prospeccao_b2b_vencida", () => drenar(db, "fn_expurgar_prospeccao_b2b_vencida", prospeccao.dias), zerado);
+  // O decisor achado pelo Treg (9003) é dado de PESSOA que nunca falou com a
+  // empresa: vale a validade gravada na linha (180 dias), não o prazo da busca —
+  // o argumento de dias é ignorado pela função.
+  const decisoresB2bDrenados = await executarDreno(falhas, "fn_expurgar_contatos_b2b_vencidos", () => drenar(db, "fn_expurgar_contatos_b2b_vencidos", prospeccao.dias), zerado);
   // Nona poda: as observações do Jev (0421). Padrão 90 / piso 30, a janela da
   // concordância que o cartão mostra — o piso mora no CORPO da função.
   const observacoesDrenadas = await executarDreno(falhas, "fn_expurgar_observacoes_do_jev", () => drenar(db, "fn_expurgar_observacoes_do_jev", observacoesDoJev.dias), zerado);
@@ -642,6 +660,8 @@ export async function podarHistorico(
     passagens_apagadas: passagens.apagadas,
     avisos_de_caso_apagados: avisosDeCaso.apagadas,
     prospeccao_apagada: prospeccaoDrenada.apagadas,
+    prospeccao_b2b_apagada: prospeccaoB2bDrenada.apagadas,
+    decisores_b2b_apagados: decisoresB2bDrenados.apagadas,
     observacoes_do_jev_apagadas: observacoesDrenadas.apagadas,
     candidatos_do_golden_apagados: candidatosDrenados.apagadas,
     lotes_fila: jobs.lotes,
@@ -651,6 +671,8 @@ export async function podarHistorico(
     lotes_passagens: passagens.lotes,
     lotes_avisos_de_caso: avisosDeCaso.lotes,
     lotes_prospeccao: prospeccaoDrenada.lotes,
+    lotes_prospeccao_b2b: prospeccaoB2bDrenada.lotes,
+    lotes_decisores_b2b: decisoresB2bDrenados.lotes,
     lotes_observacoes_do_jev: observacoesDrenadas.lotes,
     lotes_candidatos_do_golden: candidatosDrenados.lotes,
     fila_tem_resto: jobs.temResto,
@@ -660,6 +682,8 @@ export async function podarHistorico(
     passagens_tem_resto: passagens.temResto,
     avisos_de_caso_tem_resto: avisosDeCaso.temResto,
     prospeccao_tem_resto: prospeccaoDrenada.temResto,
+    prospeccao_b2b_tem_resto: prospeccaoB2bDrenada.temResto,
+    decisores_b2b_tem_resto: decisoresB2bDrenados.temResto,
     observacoes_do_jev_tem_resto: observacoesDrenadas.temResto,
     rascunhos_apagados: rascunhosDrenados.apagadas,
     lotes_rascunhos: rascunhosDrenados.lotes,
@@ -750,6 +774,9 @@ export function houveEfeito(resultado: ResultadoDaRetencao): boolean {
     // Esta é a poda de dado de PESSOA que nunca falou com a empresa (0408) —
     // silenciar aqui seria apagar dado sensível sem trilha.
     resultado.prospeccao_apagada > 0 ||
+    // A busca B2B por CNPJ vencida (9002), pela mesma razão: apagou, audita.
+    resultado.prospeccao_b2b_apagada > 0 ||
+    resultado.decisores_b2b_apagados > 0 ||
     // A nona, pela mesma razão: poda que apagou sem deixar trilha é
     // encolhimento silencioso.
     resultado.observacoes_do_jev_apagadas > 0 ||

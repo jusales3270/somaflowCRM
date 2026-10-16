@@ -487,6 +487,23 @@ export const SINAL_DE_URGENCIA = {
 } as const;
 
 /**
+ * A nota de aderência das empresas da prospecção B2B
+ * (`lib/prospecting/b2b/qualificar.ts`). Também sem ponto no registro e também
+ * FORA das tarefas da conversa: quem pede é o administrador, no botão
+ * "Qualificar com o Jev" da lista B2B — o liga/desliga do Jev nas conversas não
+ * se aplica, e o que sai são dados públicos de pessoa jurídica (Receita), nunca
+ * mensagem de cliente. A nota é só informação na lista: nada é enviado nem
+ * bloqueado por ela.
+ */
+export const ADERENCIA_B2B = {
+  purpose: "jev_aderencia_b2b",
+  rotulo: "Dar nota às empresas da prospecção B2B",
+  porQue:
+    "O Jev foi perguntado quão perto do perfil ideal descrito na busca cada empresa está, pela atividade, porte, capital social e tempo de existência.",
+  porQueNaFalha: "O Jev não respondeu: as empresas ficaram sem nota e a lista segue como estava.",
+} as const;
+
+/**
  * O nome de gente da chamada do Jev com este `purpose`: o da tarefa daquele
  * ponto, ou o dos pedidos. `null` quando não é chamada do Jev.
  */
@@ -494,6 +511,7 @@ export function rotuloDaChamadaDoJev(purpose: string): string | null {
   if (purpose === CONFERENCIA_DE_CAMPO.purpose) return CONFERENCIA_DE_CAMPO.rotulo;
   if (purpose === PEDIDOS_DO_CLIENTE.purpose) return PEDIDOS_DO_CLIENTE.rotulo;
   if (purpose === SINAL_DE_URGENCIA.purpose) return SINAL_DE_URGENCIA.rotulo;
+  if (purpose === ADERENCIA_B2B.purpose) return ADERENCIA_B2B.rotulo;
   return TAREFAS_DO_JEV.find((t) => t.ponto === purpose)?.rotulo ?? null;
 }
 

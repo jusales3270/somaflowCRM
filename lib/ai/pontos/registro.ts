@@ -249,6 +249,18 @@ export const PONTOS_DE_IA: readonly PontoDeIa[] = [
     registraEm: "llm_calls",
   },
   {
+    id: "prospecting_b2b_cnae_suggest",
+    rotulo: "Sugerir CNAEs na prospecção B2B",
+    oQueFaz:
+      "Lê a descrição do tipo de empresa que você quer prospectar e sugere as atividades (CNAE) que combinam, conferidas contra o catálogo oficial do IBGE.",
+    papel: "melhorar",
+    exige: {},
+    emissor: "lib/prospecting/b2b/sugerir-cnae.ts",
+    sintomaDeFalha:
+      "As sugestões aparecem só pela busca por palavras, sem o motivo de cada CNAE — a busca continua funcionando e o catálogo segue disponível para escolher à mão.",
+    registraEm: "llm_calls",
+  },
+  {
     id: "draft_suggestion",
     rotulo: "Sugerir resposta ao atendente",
     oQueFaz:

@@ -105,6 +105,21 @@ const FRONTEIRAS: Fronteira[] = [
     medir: () => nomesDeCabecalho(),
   },
   {
+    id: "treg.idempotency-key",
+    terceiro: "Treg (decisores da prospecção B2B)",
+    teto: null,
+    forma: TOKEN_DE_CABECALHO,
+    fonte: "lib/prospecting/b2b/decisores.ts — `b2b-${item.id}-${passo}`; o Treg documenta só o escopo (por chamador) e a validade (24 h)",
+    lacuna:
+      "a chave sai da NOSSA rodada para o Treg, que não publica teto nem formato para ela. O que sai é `b2b-` + uuid do item + o passo (o id Apollo da pessoa tem 24 hex): ~85 caracteres, sem espaço — medido aqui, pendente de número do Treg.",
+    medir: () => [
+      `b2b-${randomId()}-empresa`,
+      `b2b-${randomId()}-pessoas-2`,
+      `b2b-${randomId()}-revelar-557087a27369641a2e650e00`,
+      `b2b-${randomId()}-celular-557087a27369641a2e650e00`,
+    ],
+  },
+  {
     id: "mensagens.external_id",
     terceiro: "WAHA / Meta (id da mensagem, deles para nós)",
     teto: null,
@@ -195,6 +210,9 @@ const SITES: { arquivo: string; fronteira: string; papel?: "gerador" | "validado
   { arquivo: "app/api/v1/channel-sessions/route.ts", fronteira: "api.idempotency-key", papel: "validador" },
   { arquivo: "app/api/v1/lgpd/requests/[id]/approve/route.ts", fronteira: "api.idempotency-key", papel: "validador" },
   { arquivo: "app/api/v1/onboarding/whatsapp/session/route.ts", fronteira: "api.idempotency-key", papel: "validador" },
+  // A chave de idempotência que mandamos ao TREG (outro terceiro, outra fronteira):
+  // ela protege a rodada de decisores de pagar duas vezes numa retentativa.
+  { arquivo: "lib/prospecting/b2b/treg.ts", fronteira: "treg.idempotency-key" },
 ];
 
 describe("todo identificador que cruza fronteira cabe no que o terceiro aceita", () => {
@@ -317,7 +335,9 @@ describe("a varredura é de classe: site novo de fronteira reprova", () => {
     // Só o cabeçalho como tal (`'Idempotency-Key'`/`"Idempotency-Key"`), não a
     // prosa dos comentários: o que cruza fronteira é o cabeçalho.
     const achados = caminhosCom(/['"]Idempotency-Key['"]/);
-    const registrados = SITES.filter((s) => s.fronteira === "api.idempotency-key").map((s) => s.arquivo);
+    // A nossa (api.idempotency-key) e a que mandamos a terceiros (treg.…): toda
+    // fronteira de chave de idempotência, cada uma com a sua entrada.
+    const registrados = SITES.filter((s) => s.fronteira.endsWith(".idempotency-key")).map((s) => s.arquivo);
     expect(achados.sort()).toEqual([...registrados].sort());
   });
 
