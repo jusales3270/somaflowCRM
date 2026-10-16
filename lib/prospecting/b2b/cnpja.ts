@@ -115,13 +115,6 @@ const pagina = z.object({
   records: z.array(z.unknown()),
 });
 
-/** Provedores de e-mail pessoal: o domínio deles não diz nada sobre a empresa. */
-const WEBMAIL = new Set([
-  "gmail.com", "hotmail.com", "outlook.com", "live.com", "yahoo.com", "yahoo.com.br",
-  "bol.com.br", "uol.com.br", "terra.com.br", "ig.com.br", "icloud.com", "msn.com",
-  "globo.com", "globomail.com", "protonmail.com", "zipmail.com.br",
-]);
-
 function cnae7(id: number | undefined): string | null {
   if (!id || !Number.isFinite(id)) return null;
   return String(id).padStart(7, "0");
@@ -142,8 +135,9 @@ export function normalizarEstabelecimento(bruto: unknown): EmpresaB2b | null {
     .filter((m) => (m.ownership ?? "CORPORATE").toUpperCase() === "CORPORATE")
     .map((m) => (m.address ?? "").trim().toLowerCase())
     .filter((m) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(m));
-  const dominio =
-    emails.map((m) => m.split("@")[1]!).find((d) => !WEBMAIL.has(d)) ?? null;
+  // Só sobra e-mail que a própria CNPJá marcou como CORPORATIVO (o pessoal e o
+  // da contabilidade saíram acima): o domínio dele é o da empresa.
+  const dominio = emails[0]?.split("@")[1] ?? null;
   const telefones = (e.phones ?? [])
     .map((t) => ({
       numero: `${(t.area ?? "").replace(/\D/g, "")}${(t.number ?? "").replace(/\D/g, "")}`,

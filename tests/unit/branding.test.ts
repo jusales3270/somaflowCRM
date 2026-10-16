@@ -872,6 +872,11 @@ const HOSTS_DECLARADOS: Record<string, EntradaDeHost> = {
     motivo:
       "endpoint da plataforma que roda o crawler do Google Places (`lib/prospecting/provider.ts`). É o destino do request, com a chave da PRÓPRIA organização — trocar pelo domínio do revendedor quebraria a chamada, e esconder o nome não esconde para onde o dado vai.",
   },
+  "api.cnpja.com": {
+    categoria: "FORNECEDOR",
+    motivo:
+      "API da base de CNPJ que a prospecção B2B consulta (`lib/prospecting/b2b/cnpja.ts`), com a chave da PRÓPRIA organização. É o destino do request; `CNPJA_API_BASE_URL` só troca para o dublê de teste.",
+  },
   // ── identificador de fio: NÃO é destino de chamada nem texto de tela ──────
   "s.whatsapp.net": {
     categoria: "PROTOCOLO",

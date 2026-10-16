@@ -356,7 +356,7 @@ export function ProspeccaoB2b() {
                 <li key={c.codigo}>
                   <button
                     type="button"
-                    className="w-full rounded px-2 py-1 text-left hover:bg-muted"
+                    className="w-full rounded-md px-2 py-1 text-left hover:bg-muted"
                     onClick={() => {
                       if (!cnaes.some((x) => x.codigo === c.codigo)) alternarCnae(c);
                     }}
@@ -418,7 +418,7 @@ export function ProspeccaoB2b() {
                 <li key={c.codigo}>
                   <button
                     type="button"
-                    className="w-full rounded px-2 py-1 text-left hover:bg-muted"
+                    className="w-full rounded-md px-2 py-1 text-left hover:bg-muted"
                     onClick={() => {
                       setCidades((atual) => (atual.some((x) => x.codigo === c.codigo) ? atual : [...atual, c]));
                       if (!ufs.includes(c.uf)) setUfs((atual) => [...atual, c.uf]);

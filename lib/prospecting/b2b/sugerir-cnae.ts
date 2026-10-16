@@ -99,7 +99,7 @@ export async function sugerirCnaes(
   try {
     const { result } = await runModelCall(pool, llmEdgeConfigFromEnv(env), {
       tenantId: org,
-      purpose: PONTO_SUGESTAO_DE_CNAE,
+      purpose: "prospecting_b2b_cnae_suggest", // = PONTO_SUGESTAO_DE_CNAE (a varredura de pontos lê o literal)
       model: modelo.model,
       llmOverride: { provider: modelo.provider, credentialId: modelo.credential_id },
       maxSteps: 1,

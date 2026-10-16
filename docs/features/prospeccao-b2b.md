@@ -44,6 +44,8 @@ Em **CRM › Prospecção**, o seletor no topo tem dois níveis:
   Para atualizar: `scripts/gerar-catalogos-b2b.ts` (instruções no cabeçalho).
 - API: `/api/v1/prospecting/b2b` (sessão ou bearer `dsk_`, admin), `/exportar`, `/catalogos`.
 - Teste com dublê: `scripts/duble-cnpja-e2e.mjs` + `tests/e2e/prospeccao-b2b.spec.ts`.
+- Prova pela tela: `evidence/prospeccao-b2b/01-perfil.png` (perfil: CNAE sugerido, cidade, porte) e
+  `evidence/prospeccao-b2b/02-resultados.png` (lista com seleção e exportação).
 
 ## Próximos passos
 

@@ -373,7 +373,10 @@ describe("o handler escolhe UM caminho", () => {
 
 const ETAPA = "44444444-4444-4444-8444-444444444444";
 const CHAVE_DA_ETAPA = `MetaEtapa:${ETAPA}`;
-const ENTROU_NA_ETAPA = "2026-10-06T16:32:50.000Z";
+// Relativa a AGORA, não data fixa: a Meta recusa evento com mais de 7 dias
+// (`IDADE_MAXIMA_MS` em `lib/plataformas-de-anuncio/meta/conversions.ts`), e uma
+// data fixa fazia este arquivo reprovar sozinho uma semana depois de escrito.
+const ENTROU_NA_ETAPA = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
 const regraDaEtapa = (metaEvent = "InitiateCheckout") => ({
   meta_ads_conversion_rules: {
@@ -382,7 +385,7 @@ const regraDaEtapa = (metaEvent = "InitiateCheckout") => ({
     event_name: CHAVE_DA_ETAPA,
     meta_event: metaEvent,
     enabled: true,
-    configured_at: "2026-10-01T00:00:00Z",
+    configured_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
   },
   crm_stages: { id: ETAPA },
 });

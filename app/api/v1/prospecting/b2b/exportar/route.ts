@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 
 import { getRequestPool } from "@/lib/agent-engine/db/request-pool";
-import { resolveAuthDual } from "@/lib/api/auth-dual";
+import { resolveAuthDual, tetoDeEscritaDoToken } from "@/lib/api/auth-dual";
 import { fail } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
@@ -26,6 +26,8 @@ export async function GET(req: NextRequest) {
     scope: "mcp:read",
   });
   if (!auth.ok) return auth.response;
+  const teto = await tetoDeEscritaDoToken(auth, "prospecting", requestId);
+  if (teto) return teto;
   const searchId = req.nextUrl.searchParams.get("search") ?? "";
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchId))
     return fail("validation_failed", "Informe a busca a exportar.", 422, { requestId });

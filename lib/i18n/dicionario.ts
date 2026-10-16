@@ -15471,6 +15471,13 @@ export const DICIONARIO: Traducoes = {
   "Ex.: indústrias de alimentos e bebidas de médio porte que vendem para redes de varejo": { es: "Ej.: industrias de alimentos y bebidas de tamaño medio que venden a cadenas minoristas" },
   "Sugerindo...": { es: "Sugiriendo..." },
   "Sugerir CNAEs": { es: "Sugerir CNAE" },
+  "Sugerir CNAEs na prospecção B2B": { es: "Sugerir CNAE en la prospección B2B" },
+  "Lê a descrição do tipo de empresa que você quer prospectar e sugere as atividades (CNAE) que combinam, conferidas contra o catálogo oficial do IBGE.": {
+    es: "Lee la descripción del tipo de empresa que quieres prospectar y sugiere las actividades (CNAE) que encajan, verificadas contra el catálogo oficial del IBGE.",
+  },
+  "As sugestões aparecem só pela busca por palavras, sem o motivo de cada CNAE — a busca continua funcionando e o catálogo segue disponível para escolher à mão.": {
+    es: "Las sugerencias aparecen solo por la búsqueda de palabras, sin el motivo de cada CNAE: la búsqueda sigue funcionando y el catálogo sigue disponible para elegir a mano.",
+  },
   "Sugestões pela busca de palavras (sem IA configurada ou indisponível).": { es: "Sugerencias por búsqueda de palabras (sin IA configurada o no disponible)." },
   "Ou procure no catálogo de CNAE": { es: "O busca en el catálogo de CNAE" },
   "Código ou palavras da atividade": { es: "Código o palabras de la actividad" },
