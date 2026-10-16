@@ -1,30 +1,34 @@
 /**
- * Cliente do Treg — acha o DECISOR de uma empresa já escolhida na lista B2B:
- * nome, cargo e LinkedIn (`treg.people.search`), e-mail verificado
- * (`treg.people.email.find` com verificação na mesma chamada) e, se pedido,
- * celular (`treg.people.phone.find`).
+ * Cliente do Treg para os DECISORES das empresas escolhidas na lista B2B.
  *
- * Contrato conferido no catálogo público (treg.to/catalog/endpoints/<id>, 16/10/2026):
- *   - `POST https://treg.to/call/<capacidade>` com corpo JSON e `X-Treg-Token`;
- *   - resposta `{ output, raw, _treg: { served_by, tried } }`; o "não achou" é
- *     `output.people == []` / `output.email == null` / `output.phone == null`;
- *   - o custo da chamada vem em `X-Treg-Cost-Micro` (micro-US$, 1e-6) e o id em
- *     `X-Treg-Call-Id` — os dois vão para o livro-caixa;
- *   - `X-Treg-Route-Max-Cost: <usd>` é o teto DESTA chamada: acima dele o Treg
- *     responde 402 `route_max_cost` e não cobra nada;
- *   - `Idempotency-Key` evita pagar duas vezes numa retentativa (24 h);
- *   - `X-Treg-Meta` marca a chamada com a organização (só `[A-Za-z0-9._:-]`);
- *   - 402 sem `route_max_cost` = saldo insuficiente; nada é cobrado.
+ * A fonte de pessoas é a APOLLO, chamada direto pelo Treg (não a busca "roteada"
+ * `treg.people.search`). Medido com empresas reais de Indaiatuba (16/10/2026):
+ *   - `treg.people.search` (cascata de 25 provedores) IGNORA o cargo e, sem domínio,
+ *     devolve gente de OUTRAS empresas da cidade — LinkedIns que não batem;
+ *   - `apollo.people.search` filtra por empresa (domínio ou id Apollo) e por
+ *     senioridade NA BASE, a pessoa vem ligada ao cadastro da empresa, e é GRÁTIS
+ *     (não devolve contato): achou decisor em 17 de 34 empresas, todas certas;
+ *   - `apollo.people.enrich` pelo id (US$ 0,026) devolve nome completo, cargo,
+ *     LinkedIn, e-mail com `email_status` e cidade;
+ *   - `apollo.companies.search` pelo nome (US$ 0,026 por PÁGINA) acha a empresa que
+ *     não tem domínio na Receita — ambígua, quem escolhe é `./decisores.ts`.
+ * O e-mail que a Apollo não tiver sai por `treg.people.email.find` (com verificação),
+ * e o celular, só quando pedido, por `treg.people.phone.find` (o da Apollo exige chave
+ * própria da Apollo).
  *
- * A saída de rede passa por `allowlistedFetch` com o host da base configurada.
+ * Contrato (catálogo público do Treg): `POST https://treg.to/call/<id>` com
+ * `X-Treg-Token`; os endpoints da Apollo recebem os filtros na QUERY (arrays como
+ * `campo[]=valor`) e devolvem a resposta da Apollo crua; os roteados (`treg.*`)
+ * recebem JSON e devolvem `{ output, raw, _treg }`. Custo em `X-Treg-Cost-Micro`
+ * (micro-US$), id em `X-Treg-Call-Id`, teto da chamada em `X-Treg-Route-Max-Cost`
+ * (acima dele: 402 `route_max_cost`, nada cobrado), `Idempotency-Key` contra pagar
+ * duas vezes, `X-Treg-Meta` com a organização. 402 sem `route_max_cost` = sem saldo.
  */
-import { z } from "zod";
-
 import { allowlistedFetch } from "@/lib/agent-engine/edge/egress";
 import { env } from "@/lib/env";
 
 export const BASE_PADRAO_TREG = "https://treg.to";
-/** A busca de pessoas tenta provedores em sequência: alguns demoram. */
+/** Alguns provedores demoram; a Apollo responde em ~1 s. */
 const TIMEOUT_MS = 90_000;
 
 export class ErroDoTreg extends Error {
@@ -48,11 +52,11 @@ export interface RespostaDoTreg<T> {
   custoMicro: number;
   callId: string | null;
   servidoPor: string | null;
-  /** O bloco `_treg` da resposta (verificação, provedores tentados). */
+  /** O bloco `_treg` da resposta roteada (verificação, provedores tentados). */
   meta: Record<string, unknown> | null;
 }
 
-interface Opcoes {
+export interface Opcoes {
   /** Teto em micro-US$ para ESTA chamada (vira `X-Treg-Route-Max-Cost`). */
   tetoMicro: number;
   organizacao: string;
@@ -61,24 +65,45 @@ interface Opcoes {
   buscar?: typeof fetch;
 }
 
-async function chamar(chave: string, capacidade: string, corpo: object, op: Opcoes): Promise<RespostaDoTreg<unknown>> {
+type Consulta = Record<string, string | number | boolean | Array<string> | null | undefined>;
+
+/** `{ a: ["x","y"], b: 1 }` → `a[]=x&a[]=y&b=1` (o formato dos endpoints da Apollo). */
+export function consultaDaApollo(c: Consulta): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(c)) {
+    if (v === null || v === undefined) continue;
+    if (Array.isArray(v)) for (const x of v) q.append(`${k}[]`, x);
+    else q.append(k, String(v));
+  }
+  return q.toString();
+}
+
+async function chamar(
+  chave: string,
+  endpoint: string,
+  entrada: { corpo: object } | { consulta: Consulta },
+  op: Opcoes,
+): Promise<RespostaDoTreg<unknown>> {
   const base = baseDoTreg();
+  const roteado = endpoint.startsWith("treg.");
   const headers: Record<string, string> = {
     "X-Treg-Token": chave,
-    "Content-Type": "application/json",
     Accept: "application/json",
     "X-Treg-Route-Max-Cost": (Math.max(op.tetoMicro, 0) / 1_000_000).toFixed(6),
     "X-Treg-Meta": `customer=${op.organizacao.replace(/[^A-Za-z0-9._:-]/g, "")}, feature=prospeccao-b2b`,
     "Idempotency-Key": op.idempotencia,
   };
   if (op.verificar) headers["X-Treg-Route-Verify"] = "true";
+  const url =
+    "consulta" in entrada ? `${base}/call/${endpoint}?${consultaDaApollo(entrada.consulta)}` : `${base}/call/${endpoint}`;
+  const init: RequestInit = { method: "POST", headers, signal: AbortSignal.timeout(TIMEOUT_MS) };
+  if ("corpo" in entrada) {
+    headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(entrada.corpo);
+  }
   let res: Response;
   try {
-    res = await allowlistedFetch(
-      `${base}/call/${capacidade}`,
-      { method: "POST", headers, body: JSON.stringify(corpo), signal: AbortSignal.timeout(TIMEOUT_MS) },
-      { allowlist: new Set([new URL(base).host]), fetchImpl: op.buscar },
-    );
+    res = await allowlistedFetch(url, init, { allowlist: new Set([new URL(base).host]), fetchImpl: op.buscar });
   } catch {
     throw new ErroDoTreg("O Treg não respondeu. Tente de novo em instantes.", 502, "indisponivel");
   }
@@ -94,22 +119,22 @@ async function chamar(chave: string, capacidade: string, corpo: object, op: Opco
   if (res.status === 401 || res.status === 403)
     throw new ErroDoTreg("O token do Treg foi recusado. Confira e salve de novo.", 422, "chave");
   if (res.status === 402) {
-    const erro = String((json as { error?: unknown } | null)?.error ?? (json as { detail?: { error?: unknown } } | null)?.detail?.error ?? "");
-    if (erro.includes("route_max_cost"))
-      throw new ErroDoTreg("Esta consulta custaria mais que o teto por empresa.", 402, "teto");
+    const erro = JSON.stringify(json ?? "");
+    if (erro.includes("route_max_cost")) throw new ErroDoTreg("Esta consulta custaria mais que o teto.", 402, "teto");
     throw new ErroDoTreg("Sem saldo no Treg. Recarregue o saldo e continue.", 402, "saldo");
   }
-  // 409: a mesma chave de idempotência ainda está rodando no Treg (o nosso relógio
-  // estourou antes do dele) — a retentativa recebe a resposta, sem pagar de novo.
-  if (res.status === 429 || res.status === 503 || res.status === 409 || res.status === 410 || res.status === 202)
+  // 409: a mesma chave de idempotência ainda roda no Treg (o nosso relógio estourou
+  // antes do dele) — a retentativa recebe a resposta, sem pagar de novo.
+  if ([429, 503, 409, 410, 202].includes(res.status))
     throw new ErroDoTreg("O Treg está ocupado agora. Tente de novo em instantes.", 429, "limite");
-  // 422: a consulta foi recusada antes de sair (filtro estrito); nada é cobrado e
-  // repetir a mesma consulta não muda o resultado.
+  // 422: recusada antes de sair (filtro estrito, parâmetro da Apollo); nada é
+  // cobrado e repetir a mesma consulta não muda o resultado.
   if (res.status === 422) throw new ErroDoTreg("O Treg recusou a consulta desta empresa.", 422, "recusada");
   if (!res.ok) throw new ErroDoTreg(`O Treg respondeu com erro (${res.status}).`, 502, "indisponivel");
-  const saida = (json as { output?: unknown } | null)?.output;
+  if (json === null || typeof json !== "object") throw new ErroDoTreg("O Treg devolveu uma resposta ilegível.", 502, "resposta");
+  const meta = ((json as { _treg?: unknown })._treg ?? null) as Record<string, unknown> | null;
+  const saida = roteado ? (json as { output?: unknown }).output : json;
   if (saida === undefined) throw new ErroDoTreg("O Treg devolveu uma resposta ilegível.", 502, "resposta");
-  const meta = ((json as { _treg?: unknown } | null)?._treg ?? null) as Record<string, unknown> | null;
   return { saida, custoMicro, callId, servidoPor: servidoPor ?? (typeof meta?.served_by === "string" ? meta.served_by : null), meta };
 }
 
@@ -137,41 +162,8 @@ export async function testarTokenDoTreg(chave: string, buscar?: typeof fetch): P
   if (!res.ok) throw new ErroDoTreg(`O Treg respondeu com erro (${res.status}).`, 502, "indisponivel");
 }
 
-// ── normalização ─────────────────────────────────────────────────────────────
-// `people.search` devolve as linhas do PROVEDOR que atendeu, e o formato muda de
-// um para outro. Lemos os nomes de campo mais comuns; linha sem nome é descartada.
-
-export interface PessoaAchada {
-  nome: string;
-  primeiro_nome: string | null;
-  sobrenome: string | null;
-  cargo: string | null;
-  linkedin_url: string | null;
-  local: string | null;
-  /** A empresa que a LINHA diz (o provedor pode devolver gente de outra empresa). */
-  empresa_dominio: string | null;
-  empresa_nome: string | null;
-}
-
-function texto(v: unknown): string | null {
-  if (typeof v === "string") return v.trim() || null;
-  if (v && typeof v === "object" && "name" in v) return texto((v as { name: unknown }).name);
-  return null;
-}
-
-function primeiro(o: Record<string, unknown>, chaves: string[]): string | null {
-  for (const k of chaves) {
-    const v = k.includes(".")
-      ? k.split(".").reduce<unknown>((acc, p) => (acc && typeof acc === "object" ? (acc as Record<string, unknown>)[p] : undefined), o)
-      : o[k];
-    const t = texto(v);
-    if (t) return t;
-  }
-  return null;
-}
-
-export function dominioLimpo(v: string | null): string | null {
-  if (!v || /^n\/?a$/i.test(v)) return null;
+export function dominioLimpo(v: unknown): string | null {
+  if (typeof v !== "string" || !v.trim() || /^n\/?a$/i.test(v.trim())) return null;
   const d = v
     .trim()
     .toLowerCase()
@@ -181,87 +173,149 @@ export function dominioLimpo(v: string | null): string | null {
   return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d) ? d : null;
 }
 
-export function normalizarPessoa(bruto: unknown): PessoaAchada | null {
-  if (!bruto || typeof bruto !== "object") return null;
-  const o = bruto as Record<string, unknown>;
-  const primeiroNome = primeiro(o, ["first_name", "firstName", "given_name", "name.first"]);
-  const sobrenome = primeiro(o, ["last_name", "lastName", "family_name", "name.last"]);
-  const nome =
-    primeiro(o, ["full_name", "fullName", "name", "person_name", "display_name"]) ??
-    ([primeiroNome, sobrenome].filter(Boolean).join(" ") || null);
-  if (!nome || nome.length < 3) return null;
-  let linkedin = primeiro(o, [
-    "linkedin_url",
-    "linkedinUrl",
-    "linkedin",
-    "employee_linkedin",
-    "profile_url",
-    "profileUrl",
-    "linkedin_profile",
-    "url",
-  ]);
-  if (linkedin && !/linkedin\.com\//i.test(linkedin)) linkedin = null;
-  if (linkedin && !/^https?:\/\//i.test(linkedin)) linkedin = `https://${linkedin.replace(/^\/+/, "")}`;
+function texto(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+// ── Apollo ───────────────────────────────────────────────────────────────────
+
+/** Senioridades da Apollo que decidem compra, da maior para a menor. */
+export const SENIORIDADES_QUE_DECIDEM = ["owner", "founder", "c_suite", "partner", "vp", "director", "head", "manager"] as const;
+
+export interface CandidatoApollo {
+  id: string;
+  primeiro_nome: string | null;
+  cargo: string | null;
+  empresa_nome: string | null;
+}
+
+/**
+ * Pessoas que decidem numa empresa (por domínio OU id Apollo), num local opcional.
+ * Grátis: não vem contato, só o id para o enriquecimento.
+ */
+export async function apolloBuscarPessoas(
+  chave: string,
+  alvo: { dominio?: string | null; organizacaoId?: string | null; local?: string | null; porPagina: number },
+  op: Opcoes,
+): Promise<RespostaDoTreg<CandidatoApollo[]>> {
+  const r = await chamar(
+    chave,
+    "apollo.people.search",
+    {
+      consulta: {
+        q_organization_domains_list: alvo.dominio ? [alvo.dominio] : undefined,
+        organization_ids: alvo.organizacaoId ? [alvo.organizacaoId] : undefined,
+        person_locations: alvo.local ? [alvo.local] : undefined,
+        person_seniorities: [...SENIORIDADES_QUE_DECIDEM],
+        per_page: alvo.porPagina,
+        page: 1,
+      },
+    },
+    op,
+  );
+  const pessoas = Array.isArray((r.saida as { people?: unknown }).people) ? (r.saida as { people: unknown[] }).people : [];
   return {
-    nome: nome.replace(/\s+/g, " "),
-    primeiro_nome: primeiroNome,
-    sobrenome,
-    cargo: primeiro(o, ["title", "job_title", "jobTitle", "position", "headline", "role", "current_title"]),
-    linkedin_url: linkedin,
-    local: primeiro(o, ["location", "location_name", "locality", "city", "location.city", "country"]),
-    empresa_dominio: dominioLimpo(
-      primeiro(o, ["company_domain", "company.domain", "company_url", "email_domain", "organization.primary_domain", "company.website", "organization.website_url"]),
-    ),
-    empresa_nome: primeiro(o, ["company_name", "company.name", "organization.name", "organization_name", "current_company", "employer"]),
+    ...r,
+    saida: pessoas
+      .map((p) => p as Record<string, unknown>)
+      .filter((p) => typeof p.id === "string")
+      .map((p) => ({
+        id: p.id as string,
+        primeiro_nome: texto(p.first_name),
+        cargo: texto(p.title),
+        empresa_nome: texto((p.organization as { name?: unknown } | undefined)?.name),
+      })),
   };
 }
 
-const saidaBusca = z.object({ people: z.array(z.unknown()).default([]) }).passthrough();
+export interface EmpresaApollo {
+  id: string;
+  nome: string;
+  dominio: string | null;
+  linkedin_url: string | null;
+}
 
-/**
- * As pessoas de UMA empresa. Medido no Treg real (16/10/2026): o filtro de cargo é
- * ignorado pelos provedores (vem operador, analista…), e a busca sem domínio traz
- * gente de OUTRAS empresas da cidade. Por isso pede-se a lista da empresa sem cargo
- * e quem filtra — empresa certa e cargo de decisão — é `./decisores.ts`.
- */
-export async function buscarPessoas(
-  chave: string,
-  alvo: { dominio: string | null; empresa: string; cidade: string | null; limite: number },
-  op: Opcoes,
-): Promise<RespostaDoTreg<PessoaAchada[]>> {
-  const corpo = alvo.dominio
-    ? { company_domain: alvo.dominio, country: "BR", limit: alvo.limite }
-    : {
-        q: alvo.empresa,
-        country: "BR",
-        ...(alvo.cidade ? { location: `${alvo.cidade}, Brazil` } : {}),
-        limit: alvo.limite,
-      };
-  const r = await chamar(chave, "treg.people.search", corpo, op);
-  const lido = saidaBusca.safeParse(r.saida ?? {});
-  const pessoas = (lido.success ? lido.data.people : [])
-    .map(normalizarPessoa)
-    .filter((p): p is PessoaAchada => !!p);
-  const vistos = new Set<string>();
+/** A empresa sem domínio, pelo nome, no Brasil. US$ 0,026 por página com resultado. */
+export async function apolloBuscarEmpresa(chave: string, nome: string, op: Opcoes): Promise<RespostaDoTreg<EmpresaApollo[]>> {
+  const r = await chamar(
+    chave,
+    "apollo.companies.search",
+    { consulta: { q_organization_name: nome, organization_locations: ["Brazil"], per_page: 10, page: 1 } },
+    op,
+  );
+  const s = r.saida as { organizations?: unknown; accounts?: unknown };
+  const lista = [...(Array.isArray(s.organizations) ? s.organizations : []), ...(Array.isArray(s.accounts) ? s.accounts : [])];
   return {
     ...r,
-    saida: pessoas.filter((p) => {
-      const k = p.nome.toLowerCase();
-      if (vistos.has(k)) return false;
-      vistos.add(k);
-      return true;
-    }),
+    saida: lista
+      .map((o) => o as Record<string, unknown>)
+      .filter((o) => typeof o.id === "string" && texto(o.name))
+      .map((o) => ({
+        id: o.id as string,
+        nome: texto(o.name)!,
+        dominio: dominioLimpo(o.primary_domain ?? o.website_url),
+        linkedin_url: texto(o.linkedin_url),
+      })),
   };
 }
 
 export type VeredictoDeEmail = "valid" | "invalid" | "catch_all" | "risky" | "unknown";
 const VEREDICTOS: VeredictoDeEmail[] = ["valid", "invalid", "catch_all", "risky", "unknown"];
 
+export interface DecisorApollo {
+  nome: string;
+  cargo: string | null;
+  linkedin_url: string | null;
+  email: string | null;
+  veredicto: VeredictoDeEmail | null;
+  cidade: string | null;
+  empresa_dominio: string | null;
+}
+
+/** `email_status` da Apollo → o nosso veredicto. */
+export function veredictoDaApollo(status: unknown): VeredictoDeEmail | null {
+  if (status === "verified") return "valid";
+  if (status === "invalid" || status === "bounced") return "invalid";
+  if (status === "unavailable" || status === null || status === undefined) return null;
+  return "unknown"; // guessed, unverified, likely to engage…
+}
+
+export function normalizarPessoaDaApollo(saida: unknown): DecisorApollo | null {
+  const p = (saida as { person?: unknown })?.person as Record<string, unknown> | undefined;
+  if (!p) return null;
+  const nome = texto(p.name) ?? ([texto(p.first_name), texto(p.last_name)].filter(Boolean).join(" ") || null);
+  if (!nome) return null;
+  const email = texto(p.email);
+  const valido = !!email && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) && !/email_not_unlocked/i.test(email);
+  let linkedin = texto(p.linkedin_url);
+  if (linkedin && !/linkedin\.com\//i.test(linkedin)) linkedin = null;
+  if (linkedin) linkedin = linkedin.replace(/^http:\/\//i, "https://");
+  const org = p.organization as Record<string, unknown> | undefined;
+  return {
+    nome: nome.replace(/\s+/g, " "),
+    cargo: texto(p.title),
+    linkedin_url: linkedin,
+    email: valido ? email!.toLowerCase() : null,
+    veredicto: valido ? veredictoDaApollo(p.email_status) : null,
+    cidade: texto(p.city),
+    empresa_dominio: dominioLimpo(org?.primary_domain ?? org?.website_url),
+  };
+}
+
+/** Nome completo, LinkedIn e e-mail pelo id da busca. US$ 0,026 quando acha. */
+export async function apolloEnriquecer(chave: string, id: string, op: Opcoes): Promise<RespostaDoTreg<DecisorApollo | null>> {
+  const r = await chamar(chave, "apollo.people.enrich", { consulta: { id } }, op);
+  return { ...r, saida: normalizarPessoaDaApollo(r.saida) };
+}
+
+// ── o que a Apollo não tiver ───────────────────────────────────────────────
+
 export interface EmailAchado {
   email: string | null;
   veredicto: VeredictoDeEmail | null;
 }
 
+/** E-mail pelo nome + domínio (ou LinkedIn), com verificação na mesma chamada. */
 export async function acharEmail(
   chave: string,
   pessoa: { nome: string; dominio: string | null; linkedin_url: string | null },
@@ -272,7 +326,7 @@ export async function acharEmail(
     ...(pessoa.dominio ? { domain: pessoa.dominio } : {}),
     ...(pessoa.linkedin_url ? { linkedin_url: pessoa.linkedin_url } : {}),
   };
-  const r = await chamar(chave, "treg.people.email.find", corpo, { ...op, verificar: true });
+  const r = await chamar(chave, "treg.people.email.find", { corpo }, { ...op, verificar: true });
   const o = (r.saida ?? {}) as { email?: unknown; verified?: unknown };
   const email = typeof o.email === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(o.email.trim()) ? o.email.trim().toLowerCase() : null;
   // `X-Treg-Route-Verify` põe o resultado em `_treg.verification.verdict`; sem ele,
@@ -304,7 +358,7 @@ export async function acharCelular(
     ...(pessoa.linkedin_url ? { linkedin_url: pessoa.linkedin_url } : {}),
     ...(pessoa.email ? { email: pessoa.email } : {}),
   };
-  const r = await chamar(chave, "treg.people.phone.find", corpo, op);
+  const r = await chamar(chave, "treg.people.phone.find", { corpo }, op);
   const o = (r.saida ?? {}) as { phone?: unknown; line_type?: unknown };
   const telefone = typeof o.phone === "string" && o.phone.replace(/\D/g, "").length >= 10 ? o.phone.trim() : null;
   return { ...r, saida: { telefone, tipo: typeof o.line_type === "string" ? o.line_type : null } };

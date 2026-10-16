@@ -2,11 +2,15 @@
 /**
  * Dublê do Treg para o e2e da prospecção B2B (decisores).
  *
- * Imita o contrato conferido no catálogo público do Treg (16/10/2026):
- *   GET  /tools                          → 200 com o token certo; 401 sem/errado
- *   POST /call/treg.people.search        → { output: { people: [...] }, _treg }
- *   POST /call/treg.people.email.find    → { output: { email, verified }, _treg: { verification } }
- *   POST /call/treg.people.phone.find    → { output: { phone, line_type }, _treg }
+ * Imita o contrato conferido no catálogo público do Treg e nas respostas REAIS
+ * medidas em 16/10/2026:
+ *   GET  /tools                              → 200 com o token certo; 401 sem/errado
+ *   POST /call/apollo.people.search?<query>  → { people: [{ id, first_name, title, organization }] } — grátis;
+ *        devolve também quem NÃO decide (o filtro de cargo final é nosso)
+ *   POST /call/apollo.people.enrich?id=      → { person: { name, title, linkedin_url, email, email_status } } — US$ 0,026
+ *   POST /call/apollo.companies.search?<q>   → { organizations: [...] } — US$ 0,026 por página com resultado
+ *   POST /call/treg.people.email.find        → { output: { email, verified }, _treg: { verification } }
+ *   POST /call/treg.people.phone.find        → { output: { phone, line_type }, _treg }
  * e o dinheiro:
  *   - `X-Treg-Cost-Micro` em toda chamada cobrada (acerto paga; "não achou" é grátis);
  *   - `X-Treg-Route-Max-Cost` menor que o preço → 402 `route_max_cost`, sem cobrar;
@@ -23,7 +27,13 @@ const PORTA = Number(process.env.DUBLE_TREG_PORTA ?? 3993);
 const CHAVE = process.env.DUBLE_TREG_CHAVE ?? "treg_e2e_duble_0123456789";
 const ARQUIVO = process.env.DUBLE_TREG_ARQUIVO;
 let saldo = Number(process.env.DUBLE_TREG_SALDO_MICRO ?? 1_000_000);
-const PRECO = { "treg.people.search": 20_000, "treg.people.email.find": 5_000, "treg.people.phone.find": 30_000 };
+const PRECO = {
+  "apollo.people.search": 0,
+  "apollo.people.enrich": 26_000,
+  "apollo.companies.search": 26_000,
+  "treg.people.email.find": 5_000,
+  "treg.people.phone.find": 30_000,
+};
 
 const chamadas = [];
 const replays = new Map();
@@ -93,7 +103,8 @@ const servidor = http.createServer(async (req, res) => {
     return responder(res, r.status, r.corpo, 0);
   }
 
-  const dominio = String(corpo.company_domain ?? corpo.domain ?? "");
+  const q = url.searchParams;
+  const dominio = String(q.get("q_organization_domains_list[]") ?? corpo.company_domain ?? corpo.domain ?? "");
   const achou = !dominio.includes("semgente");
   const preco = achou ? PRECO[capacidade] : 0;
   const teto = Math.round(Number(req.headers["x-treg-route-max-cost"] ?? 1) * 1_000_000);
@@ -101,29 +112,35 @@ const servidor = http.createServer(async (req, res) => {
   if (preco > saldo) return responder(res, 402, { error: "insufficient_balance", balance_micro: saldo, topup_url: "https://treg.to/billing" });
 
   let resposta;
-  if (capacidade === "treg.people.search") {
-    const empresa = dominio.split(".")[0] || slug(corpo.q).split(".").slice(-1)[0] || "empresa";
-    // Como o Treg real: o provedor ignora o cargo e devolve a equipe — inclusive
-    // quem não decide (o operador) e, sem domínio, gente de OUTRA empresa.
+  if (capacidade === "apollo.people.search") {
+    const empresa = (dominio || q.get("organization_ids[]") || "empresa").split(".")[0];
     resposta = {
-      output: {
-        people: achou
-          ? [
-              { full_name: `Operador ${empresa}`, title: "Operador de máquina", company_domain: dominio || null },
-              ...(dominio ? [] : [{ full_name: "Diretor De Outra", title: "Diretor", company_name: "Outra Empresa Qualquer" }]),
-              {
-                full_name: `Pessoa 1 ${empresa}`,
-                title: "Diretor Industrial",
-                linkedin_url: `https://www.linkedin.com/in/pessoa-1-${empresa}`,
-                company_domain: dominio || null,
-              },
-            ]
-          : [],
-        count: achou ? 2 : 0,
-      },
-      raw: {},
-      _treg: { served_by: "duble", tried: ["duble"] },
+      total_entries: achou ? 2 : 0,
+      people: achou
+        ? [
+            { id: `sup-${empresa}`, first_name: "Supervisor", title: "Sales Supervisor", organization: { name: empresa } },
+            { id: `dir-${empresa}`, first_name: "Pessoa", title: "Diretor Industrial", organization: { name: empresa } },
+          ]
+        : [],
     };
+  } else if (capacidade === "apollo.people.enrich") {
+    const id = String(q.get("id") ?? "");
+    const empresa = id.replace(/^(dir|sup)-/, "");
+    resposta = {
+      person: {
+        id,
+        name: `Pessoa 1 ${empresa}`,
+        title: id.startsWith("dir-") ? "Diretor Industrial" : "Sales Supervisor",
+        linkedin_url: `http://www.linkedin.com/in/pessoa-1-${empresa}`,
+        email: `pessoa.1@${empresa}.com.br`,
+        email_status: "verified",
+        city: "Campinas",
+        organization: { primary_domain: `${empresa}.com.br` },
+      },
+    };
+  } else if (capacidade === "apollo.companies.search") {
+    const nome = String(q.get("q_organization_name") ?? "");
+    resposta = { organizations: [{ id: `org-${slug(nome)}`, name: nome, primary_domain: `${slug(nome) || "x"}.com.br` }] };
   } else if (capacidade === "treg.people.email.find") {
     resposta = {
       output: achou ? { email: `${slug(corpo.full_name)}@${dominio || "exemplo.com.br"}`, verified: true, confidence: 0.95 } : { email: null },

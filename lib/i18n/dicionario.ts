@@ -15472,9 +15472,11 @@ export const DICIONARIO: Traducoes = {
   "Sugerindo...": { es: "Sugiriendo..." },
   "Sugerir CNAEs": { es: "Sugerir CNAE" },
   // SomaFlow — prospecção B2B completa: decisores (Treg), nota (Jev), custo dos provedores.
+  "Acha, na base da Apollo (pelo Treg), quem decide nas empresas marcadas que ainda não têm decisor — dono, sócio, diretoria, gerência — com nome, cargo, LinkedIn e e-mail. A pessoa vem ligada à própria empresa. Cada consulta paga sai da sua conta no Treg; a busca para sozinha no teto.": { es: "Encuentra, en la base de Apollo (vía Treg), a quien decide en las empresas marcadas que aún no tienen decisor — dueño, socio, dirección, gerencia — con nombre, cargo, LinkedIn y correo. La persona viene vinculada a la propia empresa. Cada consulta paga sale de su cuenta en Treg; la búsqueda se detiene sola en el tope." },
+  "Custo: procurar quem decide é grátis; revelar cada decisor (nome completo, LinkedIn e e-mail) custa US$ 0,026; empresa sem site custa mais US$ 0,026 para achá-la pelo nome. Empresa sem ninguém achado não paga revelação.": { es: "Costo: buscar a quien decide es gratis; revelar cada decisor (nombre completo, LinkedIn y correo) cuesta US$ 0,026; una empresa sin sitio cuesta US$ 0,026 más para encontrarla por el nombre. Una empresa sin nadie encontrado no paga revelación." },
   "(verificado)": { es: "(verificado)" },
   "A busca de decisores falhou.": { es: "La búsqueda de decisores falló." },
-  "Acha nome, cargo, LinkedIn e e-mail verificado de quem decide nas empresas marcadas que ainda não têm decisor. Cada consulta é cobrada pelo Treg na sua conta; a busca para sozinha no teto.": { es: "Encuentra nombre, cargo, LinkedIn y correo verificado de quien decide en las empresas marcadas que aún no tienen decisor. Treg cobra cada consulta en su cuenta; la búsqueda se detiene sola en el tope." },
+
   "Acha quem decide nas empresas escolhidas. Pré-pago: cada consulta sai do saldo da sua conta no Treg.": { es: "Encuentra a quien decide en las empresas elegidas. Prepago: cada consulta sale del saldo de su cuenta en Treg." },
   "Ainda não há cotação do dólar para converter parte das consultas do Treg; o total em reais está menor que o real.": { es: "Aún no hay cotización del dólar para convertir parte de las consultas de Treg; el total en reales es menor que el real." },
   "Busca de decisores concluída.": { es: "Búsqueda de decisores concluida." },
@@ -15489,7 +15491,7 @@ export const DICIONARIO: Traducoes = {
   "Começando...": { es: "Empezando..." },
   "Contato da empresa": { es: "Contacto de la empresa" },
   "Cotação do dólar mais recente (PTAX):": { es: "Cotización del dólar más reciente (PTAX):" },
-  "Custo típico por empresa: de US$ 0,01 a US$ 0,05 para achar a pessoa e o e-mail verificado. Empresa sem ninguém achado quase sempre não custa nada.": { es: "Costo típico por empresa: de US$ 0,01 a US$ 0,05 para encontrar a la persona y el correo verificado. Una empresa sin nadie encontrado casi nunca cuesta nada." },
+
   "Dando nota...": { es: "Calificando..." },
   "Dar nota com o Jev": { es: "Calificar con Jev" },
   "Decisores": { es: "Decisores" },

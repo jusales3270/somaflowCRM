@@ -40,9 +40,14 @@ Em **CRM › Prospecção**, o seletor no topo tem dois níveis:
    por empresa** (1 a 3), se quer o **celular** (bem mais caro) e o **teto de gasto** em US$ (a tela
    mostra o equivalente em R$ pela PTAX). **Buscar decisores** roda nas empresas **marcadas** que
    ainda não têm decisor:
-   - para cada empresa: busca de pessoas pelo domínio + cargo (sem domínio, nome da empresa + cargo +
-     cidade); para cada pessoa achada, o e-mail **com verificação na mesma chamada**; e o celular, se
-     pedido;
+   - a fonte é a **Apollo, chamada direto pelo Treg** (não a busca "roteada" do Treg, que medimos
+     ignorando o cargo e trazendo gente de outras empresas): a empresa é achada pelo domínio da
+     Receita — sem domínio, pelo nome (US$ 0,026), escolhendo a que tem o mesmo nome;
+   - procurar quem decide (dono, sócio, diretoria, gerência) é **grátis**, da cidade da empresa para
+     fora (cidade → Brasil → qualquer lugar: em grupo grande, a planta local vem primeiro), e a
+     pessoa vem **ligada à própria empresa** na base;
+   - só os escolhidos são **revelados** (US$ 0,026 cada): nome completo, cargo, **LinkedIn** e e-mail
+     com o status da Apollo; o e-mail que faltar é procurado com verificação; o celular, se pedido;
    - o **teto é duro**: cada chamada sai com o teto do que falta (`X-Treg-Route-Max-Cost`), e a busca
      para sozinha ao bater nele ("Parou no teto de gasto") ou quando o saldo do Treg acaba — o que já
      foi achado fica;

@@ -13,7 +13,9 @@ empresas, custo mostrado antes).
 
 Na lista: **Dar nota com o Jev** classifica cada empresa como aderência alta, média ou baixa ao perfil
 descrito (só dado público de empresa vai para o Jev), com filtro por nota; **Buscar decisores** acha,
-pelo Treg, nome, cargo, LinkedIn, e-mail verificado e, se pedido, o celular de quem decide nas
-empresas marcadas — com teto de gasto que a busca respeita sozinha, e "remover e não buscar de novo".
+na base da Apollo (pelo Treg), quem decide nas empresas marcadas — dono, sócio, diretoria, gerência,
+ligado à própria empresa — com nome, cargo, LinkedIn, e-mail e, se pedido, o celular; procurar é
+grátis e cada decisor revelado custa US$ 0,026, com teto de gasto que a busca respeita sozinha, e
+"remover e não buscar de novo".
 O CSV sai com uma linha por decisor. O custo da CNPJá e do Treg aparece em **Uso e orçamento**, fora
 do teto de IA. Nada é enviado a ninguém por este nível. Guia: `docs/features/prospeccao-b2b.md`.

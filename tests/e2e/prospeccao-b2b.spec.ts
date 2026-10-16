@@ -13,9 +13,11 @@
  *      da contabilidade nem o pessoal (minimização).
  *   8. Cola a chave do Jev em IA › Provedores e volta: "Dar nota com o Jev" dá nota
  *      a todas, e o Jev recebeu só dado público de empresa (nada de contato).
- *   9. Salva o token do Treg e busca decisores com teto de US$ 0,10: a rodada para
- *      SOZINHA no teto ("Parou no teto de gasto"), os decisores aparecem na
- *      tabela, e toda chamada saiu com teto por chamada e chave de idempotência.
+ *   9. Salva o token do Treg e busca decisores com teto de US$ 0,10: a fonte é a
+ *      Apollo (busca grátis + revelar a US$ 0,026); o "Sales Supervisor" que a
+ *      Apollo devolve NÃO é revelado; a rodada para SOZINHA no teto quando o que
+ *      falta não paga a próxima revelação; toda chamada saiu com teto e chave de
+ *      idempotência.
  *  10. Remove um decisor ("não buscar de novo") e exporta: uma linha por decisor.
  *  11. Uso e orçamento mostra o custo da CNPJá e do Treg.
  *
@@ -226,24 +228,28 @@ test.describe("prospecção B2B por CNPJ", () => {
     await decisores.getByRole("button", { name: /Buscar decisores/ }).click();
     const progresso = page.getByTestId("b2b-decisores-progresso");
     await expect(progresso).toContainText("Parou no teto de gasto", { timeout: 90_000 });
-    await expect(progresso).toContainText("4 decisores");
-    await expect(progresso).toContainText("US$ 0,10 de US$ 0,10");
+    await expect(progresso).toContainText("3 decisores");
+    await expect(progresso).toContainText("US$ 0,08 de US$ 0,10");
     const doTreg = chamadasDoTreg().filter((c) => c.caminho.startsWith("/call/"));
     expect(doTreg.every((c) => c.autorizada), "chamada ao Treg sem o token salvo").toBe(true);
     expect(doTreg.every((c) => !!c.chave && !!c.teto), "toda chamada leva teto e chave de idempotência").toBe(true);
     expect(doTreg.every((c) => Number(c.teto) <= 0.1), "o teto por chamada nunca passa do que falta da rodada").toBe(true);
     expect(doTreg.every((c) => c.meta?.includes(`customer=${orgId}`)), "a chamada é marcada com a organização").toBe(true);
+    expect(doTreg.some((c) => c.caminho === "/call/apollo.people.search"), "a fonte é a Apollo").toBe(true);
+    expect(doTreg.some((c) => c.caminho === "/call/treg.people.search"), "a busca roteada (gente errada) não é usada").toBe(false);
+    const reveladas = doTreg.filter((c) => c.caminho === "/call/apollo.people.enrich");
+    expect(reveladas.every((c) => !String(c.chave).includes("sup-")), "quem não decide não é revelado (não paga)").toBe(true);
     const comDecisor = page.getByTestId("b2b-decisores-da-empresa").filter({ hasText: "(verificado)" });
-    await expect(comDecisor).toHaveCount(4);
+    await expect(comDecisor).toHaveCount(3);
     await page.screenshot({ path: path.join(EVIDENCIA, "03-decisores.png"), fullPage: true });
 
     // 10. Remove um decisor (não buscar de novo) e exporta: uma linha por decisor.
     const primeiro = comDecisor.first();
     await primeiro.getByRole("button", { name: /Remover e não buscar de novo/ }).click();
-    await expect(comDecisor).toHaveCount(3);
+    await expect(comDecisor).toHaveCount(2);
     const csv2 = await (await page.request.get((await exportar.getAttribute("href"))!)).text();
     expect(csv2).toContain("Decisor;Cargo;E-mail do decisor");
-    expect(csv2.match(/;verificado;/g)?.length, "três decisores verificados no CSV").toBe(3);
+    expect(csv2.match(/;verificado;/g)?.length, "dois decisores verificados no CSV").toBe(2);
 
     // 11. Uso e orçamento: o custo da CNPJá e do Treg, fora do teto de IA.
     await page.goto("/app/ai/usage");

@@ -33,7 +33,18 @@ import { logger } from "@/lib/logger";
 import { lerCredencial } from "./credenciais";
 import { registrarCusto } from "./custos";
 import type { EmpresaB2b } from "./schema";
-import { acharCelular, acharEmail, buscarPessoas, ErroDoTreg, type PessoaAchada, type RespostaDoTreg } from "./treg";
+import {
+  acharCelular,
+  acharEmail,
+  apolloBuscarEmpresa,
+  apolloBuscarPessoas,
+  apolloEnriquecer,
+  ErroDoTreg,
+  type CandidatoApollo,
+  type EmailAchado,
+  type EmpresaApollo,
+  type RespostaDoTreg,
+} from "./treg";
 
 export class ErroDosDecisores extends Error {
   constructor(
@@ -46,14 +57,14 @@ export class ErroDosDecisores extends Error {
 }
 
 /**
- * Teto por chamada (micro-US$). A busca de pessoas cobra também os "não achou" de
- * vários provedores da cascata (medido: US$ 0,05 por empresa sem ninguém, com o
- * teto antigo de US$ 0,30) — o teto baixo corta a cascata cedo. O e-mail custa
- * ~US$ 0,005; o celular é o caro e só sai quando pedido.
+ * Teto por chamada (micro-US$), medido no Treg real (16/10/2026): a busca de
+ * pessoas da Apollo é grátis; achar a empresa pelo nome e revelar uma pessoa custam
+ * US$ 0,026; o e-mail que faltar, ~US$ 0,005; o celular é o caro e só sai quando
+ * pedido.
  */
-const TETO_DA_CAPACIDADE = { busca: 50_000, email: 30_000, celular: 300_000 } as const;
-/** Linhas pedidas por empresa: o filtro de cargo é nosso, então pede-se a equipe. */
-const PESSOAS_POR_BUSCA = 20;
+const TETO_DA_CAPACIDADE = { busca: 5_000, empresa: 30_000, revelar: 30_000, email: 30_000, celular: 300_000 } as const;
+/** Candidatos lidos por degrau de local (grátis): a escolha e o corte são nossos. */
+const CANDIDATOS_POR_BUSCA = 25;
 const TENTATIVAS = 3;
 const LEASE = "3 minutes";
 
@@ -121,27 +132,29 @@ export function palavrasDaEmpresa(empresa: Pick<EmpresaB2b, "razao_social" | "no
 }
 
 /**
- * A linha é desta empresa? Com domínio dos dois lados, o domínio decide. Sem, o
- * nome da empresa da linha tem de conter a primeira palavra própria do nome dela
- * (a busca por nome traz gente de OUTRAS empresas da cidade — medido).
- * Linha sem empresa nenhuma só passa quando a busca foi pelo domínio.
+ * Das empresas que a Apollo achou pelo NOME, a que é esta: o nome dela tem de conter
+ * a primeira palavra própria do nosso (medido: "Wetzel" traz a Wetzel S.A. e quatro
+ * construtoras "Chiarelli & Wetzel"). Ganha quem casa mais palavras; empate fica com
+ * a primeira (a ordem da Apollo). `null` quando nenhuma casa.
  */
-export function ehDaEmpresa(
-  p: Pick<PessoaAchada, "empresa_dominio" | "empresa_nome">,
-  empresa: Pick<EmpresaB2b, "razao_social" | "nome_fantasia" | "dominio">,
-): boolean {
-  const dominio = empresa.dominio?.toLowerCase().replace(/^www\./, "") ?? null;
-  if (dominio && p.empresa_dominio) return p.empresa_dominio === dominio || p.empresa_dominio.endsWith(`.${dominio}`);
-  if (p.empresa_nome) {
-    const daLinha = ` ${normal(p.empresa_nome)} `;
-    const nossas = palavrasDaEmpresa(empresa);
-    return nossas.length > 0 && daLinha.includes(` ${nossas[0]} `);
+export function escolherEmpresaApollo(
+  achadas: EmpresaApollo[],
+  empresa: Pick<EmpresaB2b, "razao_social" | "nome_fantasia">,
+): EmpresaApollo | null {
+  const nossas = palavrasDaEmpresa(empresa);
+  if (!nossas.length) return null;
+  let melhor: { e: EmpresaApollo; pontos: number } | null = null;
+  for (const e of achadas) {
+    const deles = ` ${normal(e.nome)} `;
+    if (!deles.includes(` ${nossas[0]} `)) continue;
+    const pontos = nossas.filter((w) => deles.includes(` ${w} `)).length;
+    if (!melhor || pontos > melhor.pontos) melhor = { e, pontos };
   }
-  return !!dominio;
+  return melhor?.e ?? null;
 }
 
 const NAO_DECIDE = /\b(assistente|auxiliar|analista|estagiari|operador|tecnic|coordenador|supervisor|lider|trainee|junior|aprendiz|vendedor|representante|recepcionista|motorista|soldador|torneiro|mecanico|eletricista|inspetor|almoxarife|comprador|projetista|desenhista|instrutor|professor|estudante)/;
-const DECIDE_TOPO = /\b(ceo|presidente|president|socio|socia|proprietari|owner|fundador|fundadora|founder|cofounder|co founder|managing director|diretor geral|diretora geral|diretor presidente|general manager|gerente geral|administrador|administradora)\b/;
+const DECIDE_TOPO = /\b(ceo|presidente|president|socio|socia|proprietari|owner|fundador|fundadora|founder|cofounder|co founder|managing director|managing partner|diretor geral|diretora geral|diretor presidente|general manager|gerente geral|administrador|administradora)\b/;
 const DECIDE = /\b(diretor|diretora|director|cfo|coo|cto|cio|chief|vp|vice presidente|head|superintendente|gerente|manager|plant manager)\b/;
 
 /**
@@ -158,41 +171,94 @@ export function nivelDeDecisao(cargo: string | null): 0 | 1 | 2 {
   return DECIDE.test(c) ? 1 : 0;
 }
 
-/** A pessoa casa com um dos cargos que a pessoa escolheu? (todas as palavras dele) */
+/**
+ * A mesma palavra de cargo em português e em inglês: a Apollo traz muito cargo em
+ * inglês ("Quality Manager", "Industrial Director"), e quem escolhe digita em
+ * português ("Gerente de Qualidade", "Diretor Industrial").
+ */
+const EQUIVALENTES: Record<string, string[]> = {
+  diretor: ["diretor", "director"],
+  diretora: ["diretor", "director"],
+  gerente: ["gerente", "manager"],
+  presidente: ["presidente", "president"],
+  socio: ["socio", "partner"],
+  qualidade: ["qualidade", "quality"],
+  operacoes: ["operac", "operations"],
+  producao: ["producao", "production"],
+  comercial: ["comercial", "commercial", "sales"],
+  vendas: ["vendas", "sales"],
+  financeiro: ["financ"],
+  ti: ["ti", "it", "tecnologia", "technology"],
+  tecnologia: ["tecnologia", "technology", "ti", "it"],
+  engenharia: ["engenharia", "engineering"],
+  manutencao: ["manutencao", "maintenance"],
+  compras: ["compras", "purchas", "procurement"],
+  logistica: ["logistica", "logistics"],
+  rh: ["rh", "hr", "people", "recursos humanos"],
+  geral: ["geral", "general"],
+  planta: ["planta", "plant"],
+  fabrica: ["fabrica", "factory", "plant"],
+};
+function formas(w: string): string[] {
+  return EQUIVALENTES[w] ?? [w];
+}
+
+/** A pessoa casa com um dos cargos que a pessoa escolheu? (todas as palavras dele, em pt ou en) */
 export function casaComCargo(cargo: string | null, alvo: string): boolean {
   if (!cargo) return false;
   const c = ` ${normal(cargo)} `;
   const palavras = normal(alvo).split(" ").filter((w) => w.length >= 2 && !["de", "da", "do", "e"].includes(w));
-  return palavras.length > 0 && palavras.every((w) => c.includes(` ${w}`));
+  return palavras.length > 0 && palavras.every((w) => formas(w).some((f) => c.includes(` ${f}`)));
 }
 
+/** Áreas que compram serviço de engenharia e operação, na falta de cargo pedido. */
+const AREA_QUE_COMPRA = /\b(industrial|industria|operac|operations|operat|producao|production|geral|general|plant|planta|fabrica|engenharia|engineering)/;
+/** Áreas de apoio: decidem, mas raramente compram este tipo de serviço. */
+const AREA_DE_APOIO =
+  /\b(qualidade|quality|rh|hr|people|pessoas|recursos humanos|talent|marketing|manutencao|maintenance|seguranca|safety|sst|compras|purchas|procurement|logistica|logistics|juridic|legal|fiscal|contab|accounting)/;
+const PALAVRAS_DE_CARGO = new Set(["diretor", "diretora", "director", "gerente", "manager", "head", "de", "da", "do", "e", "vp", "chefe"]);
+
 /**
- * Das pessoas da busca, os decisores DESTA empresa, na ordem: primeiro quem casa
- * com os cargos escolhidos (na ordem deles), depois o topo, depois diretores e
- * gerentes. Quem não decide, ou é de outra empresa, nunca entra.
+ * Dos candidatos da Apollo (já filtrados por senioridade NA BASE e ligados à
+ * empresa), os que valem revelar, na ordem:
+ *   1. quem casa com um cargo escolhido (na ordem deles);
+ *   2. o topo (CEO, sócio, dono, diretor geral);
+ *   3. diretor/gerente da ÁREA de um cargo escolhido ("industrial" em "Diretor
+ *      Industrial") ou de uma área que compra (industrial, operações, produção…);
+ *   4. os demais diretores e gerentes;
+ *   5. as áreas de apoio (qualidade, RH, manutenção, compras…).
+ * Medido (16/10/2026): sem a área, entre três gerentes da Metaperfil a revelada foi
+ * a de Qualidade — não a Industrial nem a de Produção.
+ * Cargo que não decide (a senioridade da Apollo deixa passar "Sales Supervisor")
+ * fica fora.
  */
-export function escolherDecisores(
-  pessoas: PessoaAchada[],
-  empresa: Pick<EmpresaB2b, "razao_social" | "nome_fantasia" | "dominio">,
-  cargos: string[],
-  quantos: number,
-): PessoaAchada[] {
-  const vistos = new Set<string>();
-  return pessoas
-    .filter((p) => ehDaEmpresa(p, empresa) && nivelDeDecisao(p.cargo) > 0)
-    .map((p) => {
-      const i = cargos.findIndex((alvo) => casaComCargo(p.cargo, alvo));
-      return { p, ordem: i >= 0 ? i : cargos.length + (2 - nivelDeDecisao(p.cargo)) };
-    })
-    .sort((a, b) => a.ordem - b.ordem)
-    .map((x) => x.p)
-    .filter((p) => {
-      const k = normal(p.nome);
-      if (vistos.has(k)) return false;
-      vistos.add(k);
-      return true;
-    })
+export function escolherCandidatos(candidatos: CandidatoApollo[], cargos: string[], quantos: number): CandidatoApollo[] {
+  const areasPedidas = cargos
+    .flatMap((c) => normal(c).split(" "))
+    .filter((w) => w.length >= 2 && !PALAVRAS_DE_CARGO.has(w))
+    .flatMap(formas);
+  const faixa = (c: CandidatoApollo): number => {
+    const i = cargos.findIndex((alvo) => casaComCargo(c.cargo, alvo));
+    if (i >= 0) return i;
+    const base = cargos.length;
+    if (nivelDeDecisao(c.cargo) === 2) return base;
+    const t = ` ${normal(c.cargo ?? "")} `;
+    if (areasPedidas.some((w) => t.includes(` ${w}`))) return base + 1;
+    if (AREA_DE_APOIO.test(t)) return base + 4;
+    if (AREA_QUE_COMPRA.test(t)) return base + 2;
+    return base + 3;
+  };
+  return candidatos
+    .filter((c) => nivelDeDecisao(c.cargo) > 0)
+    .map((c, posicao) => ({ c, ordem: faixa(c), posicao }))
+    .sort((a, b) => a.ordem - b.ordem || a.posicao - b.posicao)
+    .map((x) => x.c)
     .slice(0, quantos);
+}
+
+/** Os degraus de local da busca: a cidade da empresa, o Brasil, e sem local. */
+export function degrausDeLocal(cidade: string | null): Array<string | null> {
+  return [...(cidade ? [`${cidade}, Brazil`] : []), "Brazil", null];
 }
 
 export async function iniciarRodada(
@@ -412,59 +478,82 @@ async function processarEmpresa(
       }
       return r.saida;
     } catch (e) {
-      // Uma consulta mais cara que o que sobra é "não achou" desta empresa, não
-      // falha da rodada: a próxima pode caber.
-      if (e instanceof ErroDoTreg && (e.motivo === "teto" || e.motivo === "recusada")) return null;
+      if (e instanceof ErroDoTreg && e.motivo === "teto") {
+        // Recusada pelo que FALTA da rodada (menor que o teto da capacidade): o
+        // dinheiro da rodada acabou — ela para aqui, em vez de recusar empresa por
+        // empresa até o fim da lista.
+        if (falta < TETO_DA_CAPACIDADE[capacidade]) throw new ErroDoTreg("teto da rodada", 402, "teto");
+        // Recusada pelo teto da capacidade: esta consulta é cara demais; para esta
+        // empresa é "não achou", e a próxima pode caber.
+        return null;
+      }
+      if (e instanceof ErroDoTreg && e.motivo === "recusada") return null;
       throw e;
     }
   };
 
   try {
-    // Uma busca por empresa (o cargo é filtrado aqui, não no provedor).
-    const achadas = await chamar("busca", "busca", (op) =>
-      buscarPessoas(chave, { dominio: empresa.dominio, empresa: nomeDaEmpresa, cidade: empresa.cidade, limite: PESSOAS_POR_BUSCA }, op),
-    );
-    const pessoas = escolherDecisores(
-      (achadas ?? []).filter((p) => !hashesDaPessoa(p, item.cnpj).some((h) => suprimidos.has(h))),
-      empresa,
-      rodada.cargos,
-      rodada.por_empresa,
-    );
+    // 1. A empresa na Apollo: pelo domínio da Receita; sem ele, pelo nome.
+    let dominio = empresa.dominio;
+    let organizacaoId: string | null = null;
+    if (!dominio) {
+      const achadas = await chamar("empresa", "empresa", (op) => apolloBuscarEmpresa(chave, nomeDaEmpresa, op));
+      const daqui = escolherEmpresaApollo(achadas ?? [], empresa);
+      organizacaoId = daqui?.id ?? null;
+      dominio = daqui?.dominio ?? null;
+    }
 
     let contatos = 0;
-    for (const [i, p] of pessoas.entries()) {
-      const email = await chamar(`email-${i}`, "email", (op) =>
-        acharEmail(chave, { nome: p.nome, dominio: empresa.dominio, linkedin_url: p.linkedin_url }, op),
-      );
-      if (email?.email && suprimidos.has(hashDeSupressao("email", email.email))) continue;
-      const celular = rodada.com_celular
-        ? await chamar(`celular-${i}`, "celular", (op) =>
-            acharCelular(
-              chave,
-              { nome: p.nome, dominio: empresa.dominio, linkedin_url: p.linkedin_url, email: email?.email ?? null },
-              op,
-            ),
-          )
-        : null;
-      const { rowCount } = await db.query(
-        `insert into prospecting_b2b_contacts
-           (organization_id,company_id,run_id,nome,cargo,linkedin_url,email,email_status,telefone,telefone_tipo,fonte)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'treg')
-         on conflict (company_id,lower(nome)) do nothing`,
-        [
-          org,
-          item.company_id,
-          rodada.id,
-          p.nome,
-          p.cargo,
-          p.linkedin_url,
-          email?.email ?? null,
-          email?.veredicto ?? null,
-          celular?.telefone ?? null,
-          celular?.tipo ?? null,
-        ],
-      );
-      contatos += rowCount ?? 0;
+    if (dominio || organizacaoId) {
+      // 2. Quem decide (grátis), da cidade da empresa para fora: em grupo grande
+      //    (Hydro, Randon) o "Brasil" ou o mundo trazem gente de outra planta.
+      let escolhidos: CandidatoApollo[] = [];
+      for (const [n, local] of degrausDeLocal(empresa.cidade).entries()) {
+        const candidatos = await chamar(`pessoas-${n}`, "busca", (op) =>
+          apolloBuscarPessoas(chave, { dominio: organizacaoId ? null : dominio, organizacaoId, local, porPagina: CANDIDATOS_POR_BUSCA }, op),
+        );
+        escolhidos = escolherCandidatos(candidatos ?? [], rodada.cargos, rodada.por_empresa);
+        if (escolhidos.length) break;
+      }
+
+      // 3. Revela só os escolhidos: nome completo, LinkedIn, e-mail (US$ 0,026 cada).
+      for (const candidato of escolhidos) {
+        const p = await chamar(`revelar-${candidato.id}`, "revelar", (op) => apolloEnriquecer(chave, candidato.id, op));
+        if (!p) continue;
+        if (hashesDaPessoa(p, item.cnpj).some((h) => suprimidos.has(h))) continue;
+        let email: EmailAchado | null = p.email ? { email: p.email, veredicto: p.veredicto } : null;
+        const dominioDaPessoa = p.empresa_dominio ?? dominio;
+        if (!email && (dominioDaPessoa || p.linkedin_url)) {
+          email = await chamar(`email-${candidato.id}`, "email", (op) =>
+            acharEmail(chave, { nome: p.nome, dominio: dominioDaPessoa, linkedin_url: p.linkedin_url }, op),
+          );
+          if (email?.email && suprimidos.has(hashDeSupressao("email", email.email))) continue;
+        }
+        const celular = rodada.com_celular
+          ? await chamar(`celular-${candidato.id}`, "celular", (op) =>
+              acharCelular(chave, { nome: p.nome, dominio: dominioDaPessoa, linkedin_url: p.linkedin_url, email: email?.email ?? null }, op),
+            )
+          : null;
+        const { rowCount } = await db.query(
+          `insert into prospecting_b2b_contacts
+             (organization_id,company_id,run_id,nome,cargo,linkedin_url,email,email_status,telefone,telefone_tipo,fonte)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'apollo')
+           on conflict (company_id,lower(nome)) do nothing`,
+          [
+            org,
+            item.company_id,
+            rodada.id,
+            p.nome,
+            p.cargo ?? candidato.cargo,
+            p.linkedin_url,
+            email?.email ?? null,
+            email?.email ? (email.veredicto ?? "unknown") : null,
+            celular?.telefone ?? null,
+            celular?.tipo ?? null,
+          ],
+        );
+        contatos += rowCount ?? 0;
+      }
     }
 
     await db.query(

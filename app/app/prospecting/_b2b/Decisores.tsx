@@ -157,7 +157,7 @@ export function Decisores({
         <h3 className="text-sm font-semibold">{t("Decisores (Treg)")}</h3>
         <p className="text-xs text-muted-foreground">
           {t(
-            "Acha nome, cargo, LinkedIn e e-mail verificado de quem decide nas empresas marcadas que ainda não têm decisor. Cada consulta é cobrada pelo Treg na sua conta; a busca para sozinha no teto.",
+            "Acha, na base da Apollo (pelo Treg), quem decide nas empresas marcadas que ainda não têm decisor — dono, sócio, diretoria, gerência — com nome, cargo, LinkedIn e e-mail. A pessoa vem ligada à própria empresa. Cada consulta paga sai da sua conta no Treg; a busca para sozinha no teto.",
           )}
         </p>
       </div>
@@ -248,7 +248,7 @@ export function Decisores({
           </label>
           <p className="text-xs text-muted-foreground">
             {t(
-              "Custo típico por empresa: de US$ 0,01 a US$ 0,05 para achar a pessoa e o e-mail verificado. Empresa sem ninguém achado quase sempre não custa nada.",
+              "Custo: procurar quem decide é grátis; revelar cada decisor (nome completo, LinkedIn e e-mail) custa US$ 0,026; empresa sem site custa mais US$ 0,026 para achá-la pelo nome. Empresa sem ninguém achado não paga revelação.",
             )}
           </p>
           <div className="flex flex-wrap items-center gap-2">
