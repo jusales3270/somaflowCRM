@@ -373,9 +373,22 @@ describe("o handler escolhe UM caminho", () => {
 
 const ETAPA = "44444444-4444-4444-8444-444444444444";
 const CHAVE_DA_ETAPA = `MetaEtapa:${ETAPA}`;
-// Relativa a AGORA, não data fixa: a Meta recusa evento com mais de 7 dias
-// (`IDADE_MAXIMA_MS` em `lib/plataformas-de-anuncio/meta/conversions.ts`), e uma
-// data fixa fazia este arquivo reprovar sozinho uma semana depois de escrito.
+/**
+ * ⚠️ RELATIVO, e não uma data fixa — e o porquê é uma bomba que já estourou.
+ *
+ * O transporte direto da Meta RECUSA evento com mais de 7 dias
+ * (`lib/plataformas-de-anuncio/meta/conversions.ts`, teto da plataforma). Este
+ * arquivo usava `"2026-10-06T16:32:50.000Z"`; em 13/10 a data cruzou o teto e o
+ * caso do caminho direto virou vermelho na `main` **sem ninguém tocar em
+ * nada** — verde no CI de 13/10 01:44Z (merge #2805) e vermelho no dia
+ * seguinte. Data fixa como instante de evento é a mesma classe do `[contact]`:
+ * envelhece sozinha.
+ *
+ * Uma hora atrás é recente para o teto, e todas as asserções que dependem do
+ * instante calculam a partir DESTA constante — nada aqui afirma o valor
+ * absoluto. O fixture de venda já usava data relativa (`closed_at`):
+ * `new Date(Date.now() - 60_000)`.
+ */
 const ENTROU_NA_ETAPA = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
 const regraDaEtapa = (metaEvent = "InitiateCheckout") => ({
@@ -385,7 +398,7 @@ const regraDaEtapa = (metaEvent = "InitiateCheckout") => ({
     event_name: CHAVE_DA_ETAPA,
     meta_event: metaEvent,
     enabled: true,
-    configured_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    configured_at: "2026-10-01T00:00:00Z",
   },
   crm_stages: { id: ETAPA },
 });
